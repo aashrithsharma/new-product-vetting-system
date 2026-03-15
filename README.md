@@ -13,7 +13,6 @@ A fully automated Amazon product data scraper that extracts pricing, reviews, ra
 - **Second Chance retry** — failed ASINs automatically get one retry with a fresh browser session
 - **Automated scheduling** — runs a daily scrape at 7 AM (configurable) via cron
 - **Drop-folder trigger** — drop a CSV into the `watch/` folder to trigger a scrape automatically
-- **Slack notifications** — sends a run summary to a Slack channel on completion
 - **Duplicate deduplication** — same ASIN from multiple inputs is scraped only once
 
 ---
