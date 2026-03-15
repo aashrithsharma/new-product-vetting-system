@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amazon Competitor Scraper</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #F3F4F6;
+            --card-bg: #FFFFFF;
+            --primary: #1B2B4B;
+            --accent: #10B981;
+            --error: #EF4444;
+            --warning: #F59E0B;
+            --text-main: #374151;
+            --text-muted: #6B7280;
+            --border: #E5E7EB;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 40px 20px;
+            line-height: 1.5;
+        }
+
+        .card {
+            background: var(--card-bg);
+            width: 100%;
+            max-width: 680px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            padding: 40px;
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding: 0;
+            }
+
+            .card {
+                border-radius: 0;
+                padding: 24px;
+                min-height: 100vh;
+            }
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 24px;
+        }
+
+        .header-icon {
+            width: 48px;
+            height: 48px;
+            background: #EEF2FF;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 16px;
+            color: var(--primary);
+        }
+
+        .header-text h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .header-text p {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        /* Toggles */
+        .mode-toggle {
+            display: flex;
+            gap: 0;
+            margin-bottom: 24px;
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .toggle-btn {
+            flex: 1;
+            height: 48px;
+            border: none;
+            background: white;
+            color: var(--text-muted);
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-right: 1px solid var(--border);
+        }
+
+        .toggle-btn:last-child {
+            border-right: none;
+        }
+
+        .toggle-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .section-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 12px;
+        }
+
+        textarea,
+        input[type="text"] {
+            width: 100%;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 15px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        textarea:focus,
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        textarea {
+            height: 200px;
+            resize: none;
+        }
+
+        .textarea-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 6px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .count-warning {
+            color: var(--warning);
+            font-weight: 600;
+        }
+
+        .count-error {
+            color: var(--error);
+            font-weight: 600;
+        }
+
+        .clear-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+
+        .clear-btn:hover {
+            color: var(--primary);
+            text-decoration: underline;
+        }
+
+        /* Error Display */
+        .error-box {
+            background: #FEF2F2;
+            color: #B91C1C;
+            border-left: 4px solid #EF4444;
+            padding: 12px 16px;
+            border-radius: 4px;
+            border: 1px solid #FEE2E2;
+            border-left-width: 4px;
+            font-size: 14px;
+            margin-top: 16px;
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        .helper-text {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .checkbox-item input {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .toggle-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #f3f3f3;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .toggle-text {
+            flex: 1;
+        }
+
+        .toggle-text label {
+            margin-bottom: 0;
+        }
+
+        /* Buttons */
+        .primary-btn {
+            width: 100%;
+            height: 52px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 24px;
+        }
+
+        .primary-btn:hover {
+            background: #059669;
+        }
+
+        .primary-btn:disabled {
+            background: #9CA3AF;
+            cursor: not-allowed;
+        }
+
+        /* Progress State */
+        .progress-view {
+            display: none;
+        }
+
+        .progress-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid #E5E7EB;
+            border-top: 3px solid var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 12px;
+            background: #E5E7EB;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--accent);
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+
+        .status-text {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .time-text {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+        }
+
+        /* Logs */
+        .log-container {
+            background: #1F2937;
+            height: 280px;
+            border-radius: 8px;
+            overflow-y: auto;
+            padding: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .log-line {
+            display: flex;
+            gap: 10px;
+            color: #D1D5DB;
+        }
+
+        .log-time {
+            color: #6B7280;
+            flex-shrink: 0;
+        }
+
+        .log-msg {
+            word-break: break-all;
+        }
+
+        .log-msg.success {
+            color: #FFFFFF;
+        }
+
+        .log-msg.error {
+            color: #FCA5A5;
+        }
+
+        .log-msg.warning {
+            color: #FDE68A;
+        }
+
+        .log-msg.clock {
+            color: #FDE68A;
+        }
+
+        /* Results Preview Table */
+        .results-preview {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+            font-size: 13px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .results-preview th {
+            background: #F9FAFB;
+            padding: 10px;
+            text-align: left;
+            border-bottom: 2px solid var(--border);
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .results-preview td {
+            padding: 10px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .results-preview tr:last-child td {
+            border-bottom: none;
+        }
+
+        .results-preview tr:hover {
+            background: #F3F4F6;
+        }
+
+        /* Completion */
+        .summary-box {
+            background: #ECFDF5;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            border: 1px solid #A7F3D0;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+
+        .download-buttons {
+            display: grid;
+            gap: 12px;
+        }
+
+        .download-btn {
+            width: 100%;
+            height: 48px;
+            border-radius: 8px;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            font-weight: 600;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .download-btn:hover {
+            background: #F0FDF4;
+        }
+
+        .sheet-btn {
+            border-color: #3B82F6;
+            color: #3B82F6;
+        }
+
+        .sheet-btn:hover {
+            background: #EFF6FF;
+        }
+
+        .secondary-btn {
+            width: 100%;
+            margin-top: 16px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        /* Alerts */
+        .alert {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .alert-warning {
+            background: #FEF3C7;
+            color: #92400E;
+            border: 1px solid #FCD34D;
+        }
+
+        /* Visibility Fixes */
+        .option-section-b {
+            display: none;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <header>
+            <div class="header-icon" id="headerIcon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+            </div>
+            <div class="header-text">
+                <h1 id="pageTitle">Amazon Competitor Scraper <span
+                        style="font-size: 12px; vertical-align: middle; opacity: 0.5;">v3.1.2</span></h1>
+                <p id="pageSubtitle">Choose your input type and start scraping. (v3.1 Robust Parser)</p>
+            </div>
+        </header>
+
+        <div id="activeRunBanner" class="alert alert-warning">
+            A scrape is currently in progress. Please wait for it to complete.
+        </div>
+
+        <!-- Input View -->
+        <div id="inputView">
+            <div class="mode-toggle">
+                <button id="toggleAsins" class="toggle-btn active" onclick="setMode('asins')">Paste ASINs</button>
+                <button id="toggleUrls" class="toggle-btn" onclick="setMode('urls')">Paste Amazon URLs</button>
+            </div>
+
+            <!-- Option A — ASINs -->
+            <div id="sectionA" class="form-group option-section-a">
+                <div class="section-title">Paste ASINs</div>
+                <div class="flex justify-between items-center mb-2">
+                    <label for="asinInput" class="block text-sm font-medium text-gray-700">ASINs</label>
+                    <span id="asinCount" class="text-xs font-medium text-blue-500 bg-blue-50 px-2 py-1 rounded-full border border-blue-100">0/10</span>
+                </div>
+                <div class="relative group">
+                    <textarea id="asinInput"
+                        class="w-full h-32 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none text-sm placeholder-gray-400 group-hover:bg-white"
+                        placeholder="Example: B0BZV6W8X9&#10;B0C2CY22B8&#10;B0BSG9N1X8&#10;&#10;Enter up to 10 ASINs (one per line)"></textarea>
+                    <div class="absolute right-3 bottom-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                        <span class="text-[10px] text-gray-400 font-medium">Auto-detected</span>
+                    </div>
+                </div>
+                <p id="asinWarning" class="mt-2 text-xs text-amber-600 font-medium hidden flex items-center gap-1">
+                    <i class="fas fa-exclamation-triangle"></i> Limited to first 10 ASINs
+                </p>
+            </div>
+
+            <!-- Option B — URLs -->
+            <div id="sectionB" class="form-group option-section-b">
+                <div class="section-title">Paste Amazon URLs</div>
+                <div class="flex justify-between items-center mb-2">
+                    <label for="urlInput" class="block text-sm font-medium text-gray-700">URLs</label>
+                    <span id="urlCount" class="text-xs font-medium text-blue-500 bg-blue-50 px-2 py-1 rounded-full border border-blue-100">0/10</span>
+                </div>
+                <div class="relative group">
+                    <textarea id="urlInput"
+                        class="w-full h-32 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none text-sm placeholder-gray-400 group-hover:bg-white"
+                        placeholder="Example: https://www.amazon.com/dp/B0BZV6W8X9&#10;https://www.amazon.com/dp/B0C2CY22B8&#10;&#10;Enter up to 10 URLs (one per line)"></textarea>
+                    <div class="absolute right-3 bottom-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                        <span class="text-[10px] text-gray-400 font-medium">Auto-detected</span>
+                    </div>
+                </div>
+                <p id="urlWarning" class="mt-2 text-xs text-amber-600 font-medium hidden flex items-center gap-1">
+                    <i class="fas fa-exclamation-triangle"></i> Limited to first 10 URLs
+                </p>
+            </div>
+
+            <div id="errorBox" class="error-box"></div>
+
+            <label>Download as:</label>
+            <div class="checkbox-group">
+                <label class="checkbox-item"><input type="checkbox" id="csvCheck" checked> CSV file</label>
+                <label class="checkbox-item"><input type="checkbox" id="xlsxCheck" checked> Excel file (.xlsx)</label>
+            </div>
+
+            <div class="toggle-section">
+                <div class="toggle-text">
+                    <label>Also write results to Google Sheets</label>
+                    <p class="helper-text">Results will appear in a new dated tab in your connected spreadsheet.</p>
+                </div>
+                <input type="checkbox" id="sheetsToggle" checked style="width: 40px; height: 20px; cursor: pointer;">
+            </div>
+
+            <button id="scrapeBtn" class="primary-btn" onclick="startScrape()">▶ Scrape Competitor Data</button>
+            <button id="viewProgressBtn" class="primary-btn hidden" onclick="transitionToProgress()">View Current
+                Progress →</button>
+        </div>
+
+        <!-- Progress View -->
+        <div id="progressView" class="progress-view">
+            <div class="progress-header">
+                <div class="status-group">
+                    <div id="progressBarStatus" class="status-text">Processing product 0 of 0</div>
+                    <div id="estimatedTime" class="time-text">Estimated time remaining: ~0 minutes</div>
+                </div>
+                <div id="spinner" class="spinner"></div>
+            </div>
+
+            <div class="progress-bar-container">
+                <div id="progressBarFill" class="progress-bar-fill"></div>
+            </div>
+
+            <div id="connectionLost" class="alert alert-warning" style="margin-top: -10px; margin-bottom: 20px;">
+                Connection lost — attempting to reconnect...
+            </div>
+
+            <div id="logBox" class="log-container">
+                <!-- Log lines go here -->
+            </div>
+
+            <div id="resultsWrapper" class="hidden">
+                <div class="section-title" style="margin-top: 24px; margin-bottom: 8px;">Live Results Preview</div>
+                <table class="results-preview">
+                    <thead>
+                        <tr>
+                            <th>ASIN</th>
+                            <th>Brand</th>
+                            <th>Price</th>
+                            <th>BSR</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsTableBody">
+                        <!-- Result rows go here -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="completionSummary" class="summary-box hidden">
+                <div id="finalStatus" style="font-weight: 700;">Scrape Complete — 0 of 0 products succeeded</div>
+                <div class="summary-grid" id="summaryGrid">
+                    <div>Succeeded: <span id="sumSuccess">0</span></div>
+                    <div>Failed: <span id="sumFailed">0</span></div>
+                    <div>Blocked: <span id="sumBlocked">0</span></div>
+                    <div>Total Time: <span id="sumTime">0</span> min</div>
+                </div>
+            </div>
+
+            <div id="downloadButtons" class="download-buttons hidden">
+                <button id="dlCsv" class="download-btn">⬇ Download CSV</button>
+                <button id="dlXlsx" class="download-btn">⬇ Download Excel (.xlsx)</button>
+                <button id="openSheet" class="download-btn sheet-btn hidden">📊 Open Google Sheet</button>
+            </div>
+
+            <button id="cancelBtn" class="secondary-btn" onclick="confirmCancel()"
+                style="color: var(--error); margin-top: 30px;">Cancel Run</button>
+            <button id="resetBtn" class="secondary-btn hidden" onclick="resetPage()">Scrape Another Batch</button>
+        </div>
+    </div>
+
+    <script>
+        let activeMode = 'asins';
+        let currentRunId = null;
+        let pollInterval = null;
+        let failCount = 0;
+
+        const asinInput = document.getElementById('asinInput');
+        const urlInput = document.getElementById('urlInput');
+        const errorBox = document.getElementById('errorBox');
+        const sectionA = document.getElementById('sectionA');
+        const sectionB = document.getElementById('sectionB');
+        const toggleAsins = document.getElementById('toggleAsins');
+        const toggleUrls = document.getElementById('toggleUrls');
+
+        // New elements for counters and warnings
+        const asinCount = document.getElementById('asinCount');
+        const asinWarning = document.getElementById('asinWarning');
+        const urlCount = document.getElementById('urlCount');
+        const urlWarning = document.getElementById('urlWarning');
+
+
+        function setMode(mode) {
+            activeMode = mode;
+            hideError();
+
+            // Clear inputs and update counters
+            asinInput.value = '';
+            urlInput.value = '';
+            updateCounters();
+
+            // Toggle visibility using display property per user's Fix 1
+            if (activeMode === 'asins') {
+                sectionA.style.display = 'block';
+                sectionB.style.display = 'none';
+                toggleAsins.classList.add('active');
+                toggleUrls.classList.remove('active');
+            } else {
+                sectionA.style.display = 'none';
+                sectionB.style.display = 'block';
+                toggleAsins.classList.remove('active');
+                toggleUrls.classList.add('active');
+            }
+        }
+
+        function clearActiveInput() {
+            if (activeMode === 'asins') asinInput.value = '';
+            else urlInput.value = '';
+            updateCounters();
+            hideError();
+        }
+
+        function updateCounters() {
+            const asinText = asinInput.value.trim();
+            const asins = asinText.split('\n').filter(l => l.trim().length > 0);
+            asinCount.textContent = `${asins.length}/10`;
+            asinWarning.classList.toggle('hidden', asins.length <= 10);
+
+            const urlText = urlInput.value.trim();
+            const urls = urlText.split('\n').filter(l => l.trim().length > 0);
+            urlCount.textContent = `${urls.length}/10`;
+            urlWarning.classList.toggle('hidden', urls.length <= 10);
+        }
+
+        asinInput.addEventListener('input', () => { hideError(); updateCounters(); });
+        urlInput.addEventListener('input', () => { hideError(); updateCounters(); });
+
+        function showError(msg) {
+            errorBox.textContent = msg;
+            errorBox.style.display = 'block';
+        }
+
+        function hideError() {
+            errorBox.style.display = 'none';
+        }
+
+        // Status check
+        async function checkStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                if (data.isRunning) {
+                    document.getElementById('activeRunBanner').classList.remove('hidden');
+                    document.getElementById('scrapeBtn').classList.add('hidden');
+                    document.getElementById('viewProgressBtn').classList.remove('hidden');
+                    currentRunId = data.currentRunId;
+                }
+            } catch (e) { }
+        }
+        checkStatus();
+
+        async function startScrape() {
+            let items = [];
+            const isAsinMode = activeMode === 'asins';
+            const inputField = isAsinMode ? asinInput : urlInput;
+            const rawValue = inputField.value.trim();
+
+            console.log('--- START SCRAPE DEBUG ---');
+            console.log('Active Mode:', activeMode);
+            console.log('Raw Input:', rawValue);
+
+            if (!rawValue) {
+                showError('Please enter at least one ASIN or URL');
+                return;
+            }
+
+            // Split by newlines or commas
+            items = rawValue.split(/[\n,]+/).map(s => s.trim()).filter(s => s.length > 0).slice(0, 10);
+            
+            console.log('Parsed Items:', items);
+
+            if (items.length === 0) {
+                showError('Please enter at least one valid line');
+                return;
+            }
+
+            const writeToSheets = document.getElementById('sheetsToggle').checked;
+            const formats = [];
+            if (document.getElementById('csvCheck') && document.getElementById('csvCheck').checked) formats.push('csv');
+            if (document.getElementById('xlsxCheck') && document.getElementById('xlsxCheck').checked) formats.push('xlsx');
+
+            const payload = {
+                mode: activeMode,
+                [activeMode]: items, // Correctly send { asins: [...] } or { urls: [...] }
+                formats,
+                writeToSheets,
+                triggerSource: 'frontend'
+            };
+
+            console.log('Sending Payload:', JSON.stringify(payload));
+
+            try {
+                hideError();
+                const scrapeBtn = document.getElementById('scrapeBtn');
+                scrapeBtn.disabled = true;
+                scrapeBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Starting...';
+
+                const res = await fetch('/api/scrape', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const resData = await res.json();
+                console.log('API Response Status:', res.status);
+                console.log('API Response Data:', resData);
+
+                if (!res.ok) {
+                    let errMsg = resData.error || 'Server error occurred';
+                    if (resData.details && Array.isArray(resData.details)) {
+                        errMsg += ': ' + resData.details.join('; ');
+                    }
+                    showError(errMsg);
+                    scrapeBtn.disabled = false;
+                    scrapeBtn.innerHTML = '<i class="fas fa-play mr-2"></i>Start Scraping';
+                    return;
+                }
+
+                currentRunId = resData.runId;
+                transitionToProgress();
+            } catch (err) {
+                console.error('Frontend Error:', err);
+                showError('Failed to communicate with server: ' + err.message);
+                const scrapeBtn = document.getElementById('scrapeBtn');
+                scrapeBtn.disabled = false;
+                scrapeBtn.innerHTML = '<i class="fas fa-play mr-2"></i>Start Scraping';
+            }
+        }
+
+        function transitionToProgress() {
+            document.getElementById('inputView').classList.add('hidden');
+            document.getElementById('progressView').style.display = 'block';
+            document.getElementById('pageTitle').textContent = 'Scraping in progress...';
+            startPolling();
+        }
+
+        function startPolling() {
+            if (pollInterval) clearInterval(pollInterval);
+            pollInterval = setInterval(pollProgress, 2000); // Faster polling (v3.0)
+        }
+
+        async function pollProgress() {
+            if (!currentRunId) return;
+            try {
+                const res = await fetch(`/api/scrape/${currentRunId}/progress`);
+                const data = await res.json();
+                failCount = 0;
+                document.getElementById('connectionLost').style.display = 'none';
+                updateUI(data);
+                if (data.isComplete || data.status === 'failed' || data.status === 'cancelled') {
+                    clearInterval(pollInterval);
+                    finishRun(data);
+                }
+            } catch (e) {
+                failCount++;
+                if (failCount >= 3) {
+                    document.getElementById('connectionLost').style.display = 'block';
+                }
+            }
+        }
+
+        function updateUI(data) {
+            const percent = (data.completedAsins / data.totalAsins) * 100;
+            document.getElementById('progressBarFill').style.width = `${percent}%`;
+            document.getElementById('progressBarStatus').textContent = `Processing product ${data.completedAsins} of ${data.totalAsins}`;
+            document.getElementById('estimatedTime').textContent = `Estimated time remaining: ~${Math.ceil(data.estimatedSecondsRemaining / 60)} minutes`;
+
+            // Update Logs
+            const logBox = document.getElementById('logBox');
+            logBox.innerHTML = '';
+            data.logLines.forEach(line => {
+                const div = document.createElement('div');
+                div.className = 'log-line';
+                let icon = 'ℹ';
+                let colorClass = '';
+
+                if (line.type === 'CHECK') { icon = '✓'; colorClass = 'success'; }
+                if (line.type === 'CROSS') { icon = '✗'; colorClass = 'error'; }
+                if (line.type === 'CLOCK') { icon = '⏱'; colorClass = 'clock'; }
+                if (line.type === 'ERROR') { icon = '✗'; colorClass = 'error'; }
+                if (line.type === 'WARN') { icon = '⚠️'; colorClass = 'warning'; }
+
+                div.innerHTML = `<span class="log-time">${line.timestamp}</span> <span class="log-icon">${icon}</span> <span class="log-msg ${colorClass}">${line.message}</span>`;
+                logBox.appendChild(div);
+            });
+            logBox.scrollTop = logBox.scrollHeight;
+
+            // Update Results Table (v3.0)
+            if (data.results && data.results.length > 0) {
+                document.getElementById('resultsWrapper').classList.remove('hidden');
+                const tbody = document.getElementById('resultsTableBody');
+                tbody.innerHTML = '';
+                data.results.forEach(res => {
+                    const tr = document.createElement('tr');
+                    const d = res.data || {};
+                    const statusClass = res.status === 'SUCCESS' ? 'text-green-600' : 'text-red-600';
+                    tr.innerHTML = `
+                        <td><strong>${res.asin}</strong></td>
+                        <td>${d.brand || 'N/A'}</td>
+                        <td style="font-weight: 700; color: #059669;">${d.price || 'N/A'}</td>
+                        <td>${d.bsr || 'N/A'}</td>
+                        <td><span style="font-weight: 600;" class="${statusClass}">${res.status}</span>${res.status === 'BLOCKED' ? ' 🤖' : ''}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        }
+
+        function finishRun(data) {
+            document.getElementById('spinner').style.display = 'none';
+            document.getElementById('headerIcon').innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+            document.getElementById('pageTitle').textContent = 'Scrape Complete';
+            document.getElementById('cancelBtn').classList.add('hidden');
+            document.getElementById('resetBtn').classList.remove('hidden');
+
+            document.getElementById('completionSummary').classList.remove('hidden');
+            document.getElementById('finalStatus').textContent = `✅ Scrape Complete — ${data.succeededAsins} of ${data.totalAsins} products succeeded.`;
+            document.getElementById('sumSuccess').textContent = data.succeededAsins;
+            document.getElementById('sumFailed').textContent = data.failedAsins;
+            document.getElementById('sumBlocked').textContent = data.blockedAsins;
+            document.getElementById('sumTime').textContent = Math.ceil((Date.now() - parseInt(currentRunId)) / 60000);
+
+            document.getElementById('downloadButtons').classList.remove('hidden');
+
+            const formats = data.formats || [];
+            if (formats.includes('csv')) {
+                const dl = document.getElementById('dlCsv');
+                dl.onclick = () => window.location.href = `/api/scrape/${currentRunId}/download/csv`;
+                window.location.href = `/api/scrape/${currentRunId}/download/csv`;
+            } else {
+                document.getElementById('dlCsv').classList.add('hidden');
+            }
+
+            if (formats.includes('xlsx')) {
+                const dl = document.getElementById('dlXlsx');
+                dl.onclick = () => window.location.href = `/api/scrape/${currentRunId}/download/xlsx`;
+                setTimeout(() => { window.location.href = `/api/scrape/${currentRunId}/download/xlsx`; }, 1000);
+            } else {
+                document.getElementById('dlXlsx').classList.add('hidden');
+            }
+
+            if (data.sheetLink) {
+                const os = document.getElementById('openSheet');
+                os.classList.remove('hidden');
+                os.onclick = () => window.open(data.sheetLink, '_blank');
+            }
+        }
+
+        function confirmCancel() {
+            if (confirm("Are you sure you want to cancel? Partially scraped results will be lost.")) {
+                fetch(`/api/scrape/${currentRunId}`, { method: 'DELETE' });
+            }
+        }
+
+        function resetPage() {
+            location.reload();
+        }
+    </script>
+</body>
+
+</html>

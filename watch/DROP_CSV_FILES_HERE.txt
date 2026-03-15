@@ -1,0 +1,5 @@
+DROP YOUR CSV FILES HERE. The system will detect them within 3 seconds and start processing.
+Once finished, they will be moved to the /archive folder.
+- Only .csv files are supported.
+- Max 30 ASINs per file.
+- Format: One ASIN per line (or a single column CSV).

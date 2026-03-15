@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Weekly Watchlist",
+    "cron": "0 6 * * 1",
+    "filePath": "data/watchlist.csv",
+    "category": "Watchlist",
+    "enabled": true
+  },
+  {
+    "name": "Daily Tracker",
+    "cron": "0 7 * * *",
+    "filePath": "data/daily_track.csv",
+    "category": "DailyTrack",
+    "enabled": false
+  },
+  {
+    "name": "Custom Slot A",
+    "cron": "0 0 * * *",
+    "filePath": "data/custom_a.csv",
+    "category": "CustomA",
+    "enabled": false
+  },
+  {
+    "name": "Custom Slot B",
+    "cron": "0 0 * * *",
+    "filePath": "data/custom_b.csv",
+    "category": "CustomB",
+    "enabled": false
+  }
+]
