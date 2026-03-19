@@ -6,6 +6,7 @@ const { delay } = require('./utils');
 const cheerio = require('cheerio');
 const fs = require('fs-extra');
 const path = require('path');
+const axios = require('axios');
 
 chromium.use(stealth);
 
@@ -16,6 +17,101 @@ function cleanText(str) {
         .replace(/[\u200e\u200f\u200b\u200c\u200d\u00ad\ufeff\u2022]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+function convertToUSD(priceStr) {
+    if (!priceStr || priceStr === 'N/A') return priceStr;
+
+    const clean = priceStr.replace(/[\u200e\u200f\u200b\u200c\u200d]/g, '').trim();
+
+    // Already USD — return as-is
+    if (clean.startsWith('$')) return clean;
+
+    // Strip INR symbol / text, remove commas
+    const numStr = clean
+        .replace(/INR/gi, '')
+        .replace(/₹/g, '')
+        .replace(/,/g, '')
+        .trim();
+
+    const inrValue = parseFloat(numStr);
+    if (isNaN(inrValue) || inrValue <= 0) return priceStr; // unparseable — pass through
+
+    const rate = global.exchangeRate && global.exchangeRate > 0 ? global.exchangeRate : 90; // Fallback if API fails
+    const usd = inrValue / rate;
+
+    const formatted = '$' + usd.toFixed(2);
+    logger.info(`[PRICE-CONV] ₹${inrValue.toFixed(2)} ÷ ${rate} = ${formatted}`);
+    return formatted;
+}
+
+async function extractUSDFromPageJSON(page, asin) {
+    // Amazon embeds real USD prices in JSON inside <script> tags.
+    // This works even when the displayed price is in INR.
+    try {
+        const result = await page.evaluate(() => {
+            const scripts = Array.from(document.querySelectorAll('script[type="text/javascript"], script:not([src])'));
+            const log = [];
+
+            for (const script of scripts) {
+                const text = script.textContent || '';
+
+                // Method J1: Look for twister (variants) JSON — "price":"19.99" or "priceAmount":19.99
+                const priceAmountMatch = text.match(/"priceAmount"\s*:\s*([\d.]+)/);
+                if (priceAmountMatch) {
+                    log.push(`J1-priceAmount: ${priceAmountMatch[1]}`);
+                    return { price: '$' + parseFloat(priceAmountMatch[1]).toFixed(2), method: 'J1-priceAmount', log };
+                }
+
+                // Method J2: buyingPrice field in JSON
+                const buyingMatch = text.match(/"buyingPrice"\s*:\s*([\d.]+)/);
+                if (buyingMatch) {
+                    log.push(`J2-buyingPrice: ${buyingMatch[1]}`);
+                    return { price: '$' + parseFloat(buyingMatch[1]).toFixed(2), method: 'J2-buyingPrice', log };
+                }
+
+                // Method J3: displayPrice field containing $ sign
+                const displayMatch = text.match(/"displayPrice"\s*:\s*"\$([ \d.,]+)"/);
+                if (displayMatch) {
+                    const num = displayMatch[1].replace(/,/g, '').trim();
+                    log.push(`J3-displayPrice: $${num}`);
+                    return { price: '$' + parseFloat(num).toFixed(2), method: 'J3-displayPrice', log };
+                }
+
+                // Method J4: "price":"$XX.XX" pattern in JSON
+                const priceFieldMatch = text.match(/"price"\s*:\s*"\$([ \d.,]+)"/);
+                if (priceFieldMatch) {
+                    const num = priceFieldMatch[1].replace(/,/g, '').trim();
+                    log.push(`J4-price field: $${num}`);
+                    return { price: '$' + parseFloat(num).toFixed(2), method: 'J4-price-field', log };
+                }
+            }
+
+            // Method J5: Check og:price:amount meta tag
+            const ogPrice = document.querySelector('meta[property="og:price:amount"]');
+            const ogCurrency = document.querySelector('meta[property="og:price:currency"]');
+            if (ogPrice && ogCurrency && ogCurrency.getAttribute('content') === 'USD') {
+                const val = ogPrice.getAttribute('content');
+                log.push(`J5-og:price:amount: $${val}`);
+                return { price: '$' + parseFloat(val).toFixed(2), method: 'J5-og-meta', log };
+            }
+
+            return { price: null, method: 'JSON-NONE', log };
+        });
+
+        for (const line of (result.log || [])) {
+            logger.info(`[${asin}] [JSON-PRICE]   ${line}`);
+        }
+        if (result.price) {
+            logger.info(`[${asin}] [JSON-PRICE] ✔ Found real USD via ${result.method}: ${result.price}`);
+        } else {
+            logger.info(`[${asin}] [JSON-PRICE] No USD price found in page JSON/meta`);
+        }
+        return result.price;
+    } catch (err) {
+        logger.warn(`[${asin}] [JSON-PRICE] Error: ${err.message}`);
+        return null;
+    }
 }
 
 async function getAmazonPrice(page) {
@@ -43,9 +139,9 @@ async function getAmazonPrice(page) {
 
     // --- LOG: All .a-offscreen values before waiting ---
     const offscreenBefore = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('.a-offscreen')).map(el => el.textContent.trim())
+        Array.from(document.querySelectorAll('.a-offscreen, .aok-offscreen')).map(el => el.textContent.trim())
     ).catch(() => []);
-    logger.info(`[${asin}] [PRICE] .a-offscreen values BEFORE wait (${offscreenBefore.length} found): ${JSON.stringify(offscreenBefore.slice(0, 10))}`);
+    logger.info(`[${asin}] [PRICE] offscreen values BEFORE wait (${offscreenBefore.length} found): ${JSON.stringify(offscreenBefore.slice(0, 10))}`);
 
     // Wait for price — checks the exact DevTools selector first, then falls back
     let waitResult = 'resolved';
@@ -54,7 +150,9 @@ async function getAmazonPrice(page) {
             // Method 0: Exact selector confirmed from DevTools
             const exactEl = document.querySelector(
                 '#corePrice_feature_div span.apex-pricetopay-value span.a-offscreen, ' +
-                '#corePriceDisplay_desktop_feature_div span.apex-pricetopay-value span.a-offscreen'
+                '#corePriceDisplay_desktop_feature_div span.apex-pricetopay-value span.a-offscreen, ' +
+                '#apex-pricetopay-accessibility-label, ' +
+                '.aok-offscreen'
             );
             if (exactEl) {
                 const txt = exactEl.textContent.trim();
@@ -82,7 +180,7 @@ async function getAmazonPrice(page) {
                     ) return true;
                 }
             }
-            const all = document.querySelectorAll('.a-offscreen');
+            const all = document.querySelectorAll('.a-offscreen, .aok-offscreen');
             for (const el of all) {
                 const txt = el.textContent.trim();
                 if (
@@ -102,15 +200,80 @@ async function getAmazonPrice(page) {
 
     // --- LOG: All .a-offscreen values AFTER waiting ---
     const offscreenAfter = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('.a-offscreen')).map(el => el.textContent.trim())
+        Array.from(document.querySelectorAll('.a-offscreen, .aok-offscreen')).map(el => el.textContent.trim())
     ).catch(() => []);
-    logger.info(`[${asin}] [PRICE] .a-offscreen values AFTER wait (${offscreenAfter.length} found): ${JSON.stringify(offscreenAfter.slice(0, 10))}`);
+    logger.info(`[${asin}] [PRICE] offscreen values AFTER wait (${offscreenAfter.length} found): ${JSON.stringify(offscreenAfter.slice(0, 10))}`);
 
     // Read price from live DOM with per-method logging
     const domResult = await page.evaluate((selectors) => {
         const log = [];
 
-        // Method HI: Hidden input with customerVisiblePrice — server-rendered, most reliable
+        // Method AL: Accessibility Labels (User suggested) - id="apex-pricetopay-accessibility-label"
+        // Move to TOP because user requested to "always check the pricetopay"
+        const accessibilitySelectors = [
+            '#apex-pricetopay-accessibility-label',
+            'span.apex-pricetopay-value span.a-offscreen',
+            '#corePrice_desktop .a-price span.a-offscreen',
+            '#corePriceDisplay_desktop_feature_div .a-price span.a-offscreen',
+            '.aok-offscreen',
+            '.a-offscreen'
+        ];
+        for (const sel of accessibilitySelectors) {
+            const els = document.querySelectorAll(sel);
+            for (const el of els) {
+                // Skip if hidden or inside irrelevant sections (like reviews)
+                if (el.closest('#customer_review-section, #reviews-medley-footer, #HLCXComparisonTable')) continue;
+
+                // Check data attributes first (often cleaner)
+                const dataPrice = el.getAttribute('data-pricetopay-label') || el.getAttribute('data-pricetopay-savings-label');
+                // Ensure it's not a placeholder like "{priceToPay}"
+                if (dataPrice && !dataPrice.includes('{') && (dataPrice.includes('$') || dataPrice.includes('₹') || dataPrice.toUpperCase().includes('INR'))) {
+                    // FILTER: If on .com, only accept $
+                    if (window.location.hostname.includes('amazon.com') && !dataPrice.includes('$')) continue;
+                    
+                    const m = dataPrice.match(/([$₹][\d,]+\.?\d*|INR\s?[\d,]+\.?\d*)/i);
+                    if (m) {
+                        log.push(`[AL-ATTR] ${sel}: "${m[0]}" from data-pricetopay-label`);
+                        return { price: m[0], method: 'AL-ACCESS-LABEL-ATTR', sel, log };
+                    }
+                }
+
+                const txt = el.textContent.trim();
+                if (txt && txt !== '$0' && txt !== '$0.00' && txt !== '₹0' && txt !== '₹0.00') {
+                    // FILTER: If on .com, only accept $
+                    if (window.location.hostname.includes('amazon.com') && !txt.includes('$')) continue;
+
+                    const m = txt.match(/([$₹][\d,]+\.?\d*|INR\s?[\d,]+\.?\d*)/i);
+                    if (m) {
+                        log.push(`[AL] ${sel}: "${m[0]}"`);
+                        return { price: m[0], method: 'AL-ACCESS-LABEL', sel, log };
+                    }
+                }
+            }
+        }
+
+        // Method HI-AMOUNT: items[N.base][customerVisiblePrice][amount] — raw USD numeric value
+        // e.g. <input type="hidden" name="items[0.base][customerVisiblePrice][amount]" value="58.88">
+        const amountInputs = document.querySelectorAll(
+            'input[name*="customerVisiblePrice"][name*="amount"], ' +
+            'input[id*="customerVisiblePrice"][id*="amount"]'
+        );
+        for (const el of amountInputs) {
+            const val = (el.value || el.getAttribute('value') || '').trim();
+            log.push(`[HI-AMT] ${el.name || el.id}: value="${val}"`);
+            const num = parseFloat(val);
+            if (!isNaN(num) && num > 0) {
+                // Check for currency in siblings or parent
+                let currency = '$';
+                const parent = el.parentElement;
+                if (parent && (parent.textContent.includes('₹') || parent.textContent.toUpperCase().includes('INR'))) {
+                    currency = '₹';
+                }
+                return { price: currency + num.toFixed(2), method: 'HI-AMOUNT', sel: el.name || el.id, log };
+            }
+        }
+
+        // Method HI: Hidden input with customerVisiblePrice displayString — server-rendered
         const hiddenInputSelectors = [
             'input[name*="customerVisiblePrice"][name*="displayString"]',
             'input[id*="customerVisiblePrice"]',
@@ -120,12 +283,60 @@ async function getAmazonPrice(page) {
             const el = document.querySelector(sel);
             const val = el ? (el.value || el.getAttribute('value') || '').trim() : null;
             log.push(`[HI] ${sel}: value="${val}"`);
+            // Only accept if it looks like a USD value (starts with $ or is a plain number)
             if (val && val.length > 0 && val !== '0' && val !== '₹0' && val !== '$0') {
-                return { price: val, method: 'HI-HIDDEN-INPUT', sel, log };
+                // Skip INR values — we want USD only here
+                if (val.includes('₹') || val.toUpperCase().startsWith('INR')) {
+                    log.push(`[HI] Skipping INR value from displayString: ${val}`);
+                    continue;
+                }
+                return { price: val.startsWith('$') ? val : '$' + val, method: 'HI-HIDDEN-INPUT', sel, log };
             }
         }
 
-        // Method 0: Exact selectors confirmed from DevTools — high priority
+        // Method AR: <span aria-hidden="true">$26.95</span> — the visible price Amazon renders
+        // Search inside all known buy-box / price containers first, then whole page
+        const ariaContainers = [
+            '#corePriceDisplay_desktop_feature_div',
+            '#corePrice_feature_div',
+            '#apex_offerDisplay_desktop',
+            '#buyNewSection',
+            '#price_inside_buybox',
+            '#buybox',
+            '#buyBoxAccordion',
+            '#newAccordionRow',
+            '#unqualified-buybox',
+            '#qualifiedBuyBox',
+            '#tmmSwatches',
+            '#MediaMatrix',
+        ];
+        // Try within known containers first (most precise)
+        for (const containerSel of ariaContainers) {
+            const container = document.querySelector(containerSel);
+            if (!container) continue;
+            const ariaSpans = container.querySelectorAll('span[aria-hidden="true"]');
+            for (const span of ariaSpans) {
+                const txt = span.textContent.trim();
+                if (txt && txt.startsWith('$') && txt !== '$0' && txt !== '$0.00') {
+                    log.push(`[AR] ${containerSel} > span[aria-hidden]: "${txt}"`);
+                    return { price: txt, method: 'AR-ARIA', sel: containerSel, log };
+                }
+            }
+        }
+        // Fallback: any aria-hidden span with $ anywhere on page (not struck-through)
+        const allAriaSpans = document.querySelectorAll('span[aria-hidden="true"]');
+        for (const span of allAriaSpans) {
+            // Skip if parent is a strikethrough (was price / list price)
+            const parent = span.closest('span.a-text-strike, .a-text-strike');
+            if (parent) continue;
+            const txt = span.textContent.trim();
+            if (txt && txt.startsWith('$') && txt !== '$0' && txt !== '$0.00') {
+                log.push(`[AR-FB] span[aria-hidden]: "${txt}"`);
+                return { price: txt, method: 'AR-ARIA-PAGE', log };
+            }
+        }
+
+        // Method 0: Exact selectors confirmed from DevTools
         const exactSelectors = [
             '#corePrice_feature_div span.apex-pricetopay-value span.a-offscreen',
             '#corePriceDisplay_desktop_feature_div span.apex-pricetopay-value span.a-offscreen',
@@ -141,49 +352,117 @@ async function getAmazonPrice(page) {
             }
         }
 
-        // Method A: any .a-offscreen inside known buy-box containers
-        for (const sel of selectors) {
+        // Method A: .a-offscreen inside known + expanded buy-box containers
+        const expandedSelectors = [
+            ...selectors,
+            '#tmmSwatches', '#newAccordionRow', '#kindle-price', '#MediaMatrix',
+            '#unqualified-buybox', '#qualifiedBuyBox', '#soldByThirdParty',
+            '#price', '#priceblock_ourprice', '#priceblock_dealprice',
+            '#priceblock_saleprice', '#priceblock_pospromoprice',
+            '.reinventPriceSignalV2', '.a-button-buybox',
+        ];
+        for (const sel of expandedSelectors) {
             const container = document.querySelector(sel);
-            if (!container) { log.push(`[A] ${sel}: container NOT found`); continue; }
-            const els = container.querySelectorAll('.a-offscreen');
+            if (!container) continue;
+            const els = container.querySelectorAll('.a-offscreen, .aok-offscreen');
             const vals = Array.from(els).map(el => el.textContent.trim());
-            log.push(`[A] ${sel}: offscreen values = ${JSON.stringify(vals)}`);
             for (const txt of vals) {
-                if (
-                    txt.length > 0 &&
-                    txt !== '$0' && txt !== '$0.00' &&
-                    txt !== '₹0' && txt !== '₹0.00' &&
-                    (txt.includes('$') || txt.includes('₹') || txt.includes('INR'))
-                ) return { price: txt, method: 'A', sel, log };
+                if (txt.length > 0 && txt !== '$0' && txt !== '$0.00' && txt !== '₹0' && txt !== '₹0.00' &&
+                    (txt.includes('$') || txt.includes('₹') || txt.includes('INR'))) {
+                    log.push(`[A] found in ${sel}: "${txt}"`);
+                    return { price: txt, method: 'A-EXP', sel, log };
+                }
             }
         }
 
-        // Method B: whole + fraction in buy box
-        for (const sel of selectors) {
+        // Method B: whole + fraction digits from expanded containers
+        for (const sel of expandedSelectors) {
             const container = document.querySelector(sel);
             if (!container) continue;
             const whole = container.querySelector('.a-price-whole');
             const frac = container.querySelector('.a-price-fraction');
-            const wTxt = whole ? whole.textContent.trim() : null;
-            const fTxt = frac ? frac.textContent.trim() : null;
-            log.push(`[B] ${sel}: whole="${wTxt}" frac="${fTxt}"`);
             if (whole) {
                 const w = whole.textContent.replace(/[^\d]/g, '').trim();
                 const f = frac ? frac.textContent.replace(/[^\d]/g, '') : '00';
-                if (w && w !== '0' && w.length <= 5) return { price: w + '.' + f, method: 'B', sel, log };
+                if (w && w !== '0' && w.length <= 5) {
+                    log.push(`[B] ${sel}: whole="${w}" frac="${f}"`);
+                    return { price: w + '.' + f, method: 'B', sel, log };
+                }
             }
         }
 
-        // Method C: fallback any offscreen not $0
-        const all = document.querySelectorAll('.a-offscreen');
+        // Method C: any .a-offscreen or .aok-offscreen anywhere on page
+        const all = document.querySelectorAll('.a-offscreen, .aok-offscreen');
         const allVals = Array.from(all).map(el => el.textContent.trim());
         log.push(`[C] All .a-offscreen (${allVals.length}): ${JSON.stringify(allVals.slice(0, 10))}`);
         for (const txt of allVals) {
-            if (
-                txt !== '$0' && txt !== '$0.00' &&
-                txt !== '₹0' && txt !== '₹0.00' &&
-                (txt.includes('$') || txt.includes('₹') || txt.includes('INR'))
-            ) return { price: txt, method: 'C', log };
+            if (txt !== '$0' && txt !== '$0.00' && txt !== '₹0' && txt !== '₹0.00' &&
+                (txt.includes('$') || txt.includes('₹') || txt.includes('INR'))) {
+                return { price: txt, method: 'C', log };
+            }
+        }
+
+        // Method D: direct text of specific price element IDs / classes
+        const directSelectors = [
+            '#priceblock_ourprice', '#priceblock_dealprice', '#priceblock_saleprice',
+            '#price_inside_buybox', '#kindle-price', '#price',
+            '.a-color-price', '#tp_price_block_total_price_ww',
+        ];
+        for (const sel of directSelectors) {
+            const el = document.querySelector(sel);
+            if (!el) continue;
+            const txt = el.textContent.trim();
+            const m = txt.match(/[$₹][\d,]+\.?\d*/);
+            if (m) {
+                log.push(`[D] ${sel}: "${m[0]}"`);
+                return { price: m[0].replace(/\s/g, ''), method: 'D-DIRECT', sel, log };
+            }
+        }
+
+        // Method E: first visible span.a-price (not strikethrough)
+        const priceSpans = document.querySelectorAll('span.a-price:not(.a-text-strike)');
+        for (const span of priceSpans) {
+            const off = span.querySelector('.a-offscreen, .aok-offscreen');
+            if (off) {
+                const txt = off.textContent.trim();
+                if (txt && txt !== '$0' && txt !== '$0.00' && txt !== '₹0' && txt !== '₹0.00' &&
+                    (txt.includes('$') || txt.includes('₹') || txt.includes('INR'))) {
+                    log.push(`[E] span.a-price: "${txt}"`);
+                    return { price: txt, method: 'E-SPAN', log };
+                }
+            }
+        }
+
+        // Method F: selected format price (books with format switcher)
+        const selectedFormat = document.querySelector('#tmmSwatches .selected .slot-price, #tmmSwatches .a-button-selected .slot-price');
+        if (selectedFormat) {
+            const txt = selectedFormat.textContent.trim();
+            const m = txt.match(/[$₹][\d,]+\.?\d*/);
+            if (m) { log.push(`[F] selectedFormat: "${m[0]}"`); return { price: m[0], method: 'F-FORMAT', log }; }
+        }
+
+        // Method G: Restrictive page $ sweep — only look in headers/buyboxes
+        const sweepContainers = [
+            '#corePrice_desktop', '#corePriceDisplay_desktop_feature_div',
+            '#buybox', '#buyNewSection', '#price_inside_buybox', '#centerCol'
+        ];
+        let sweepText = '';
+        sweepContainers.forEach(s => {
+            const el = document.querySelector(s);
+            if (el) sweepText += ' ' + el.innerText;
+        });
+
+        const dollarMatches = sweepText.match(/\$\s?\d{1,4}(?:,\d{3})*(?:\.\d{2})?/g) || [];
+        const freq = {};
+        for (const p of dollarMatches) {
+            const clean = p.replace(/\s/g, '');
+            if (clean === '$0' || clean === '$0.00' || clean === '$' || clean.length < 2) continue;
+            freq[clean] = (freq[clean] || 0) + 1;
+        }
+        const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+        if (sorted.length > 0) {
+            log.push(`[G] Restricted $ sweep top: ${JSON.stringify(sorted.slice(0, 5))}`);
+            return { price: sorted[0][0], method: 'G-SWEEP-RESTRICTED', log };
         }
 
         return { price: null, method: 'NONE', log };
@@ -221,27 +500,23 @@ class ScraperEngine {
         if (!this.browser) await this.init();
 
         const ua = config.scraper.userAgentPool[Math.floor(Math.random() * config.scraper.userAgentPool.length)];
-        const viewport = [
-            { width: 1366, height: 768 },
-            { width: 1440, height: 900 },
-            { width: 1920, height: 1080 }
-        ][Math.floor(Math.random() * 3)];
-
         const context = await this.browser.newContext({
             userAgent: ua,
-            viewport: viewport,
+            viewport: { width: 1280, height: 800 }, // Fixed viewport
             locale: 'en-US',
-            timezoneId: 'America/New_York',
-            geolocation: { latitude: 40.7128, longitude: -74.0060 },
+            timezoneId: 'America/Los_Angeles', // Changed timezone
+            geolocation: { latitude: 37.7749, longitude: -122.4194 }, // Changed geolocation (San Francisco)
             permissions: ['geolocation'],
             extraHTTPHeaders: {
                 'Accept-Language': 'en-US,en;q=0.9',
                 'X-Forwarded-For': '98.249.42.117',
                 'CF-IPCountry': 'US',
+                'CloudFront-Viewer-Country': 'US',
                 'Accept': 'text/html,application/xhtml+xml',
                 'Accept-Encoding': 'gzip, deflate, br',
                 'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache'
+                'Pragma': 'no-cache',
+                'Cookie': 'i18n-prefs=USD; sp-cdn="L=\\"en_US\\""; csm-hit=tb:s-1WPD589R90P8N5W72NZN|1690000000000'
             }
         });
 
@@ -277,14 +552,78 @@ class ScraperEngine {
         }
     }
 
+    async getPriceFromScraperAPI(asin) {
+        let attempts = 0;
+        const maxAttempts = 2; // Increased to 2 for better reliability
+        const apiKey = process.env.SCRAPERAPI_KEY;
+        if (!apiKey) return null;
+
+        while (attempts < maxAttempts) {
+            attempts++;
+            try {
+                // Layer 1: Structured Product API (Fastest & most accurate)
+                const url = `https://api.scraperapi.com/structured/amazon/product?api_key=${apiKey}&asin=${asin}&country=us`;
+                
+                const res = await axios.get(url, { 
+                    timeout: 45000,
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                if (res.status === 200) {
+                    const data = res.data;
+                    const price = data?.pricing || data?.price || data?.buybox_price || null;
+                    if (price && price.includes('$')) {
+                        logger.info(`[${asin}] ScraperAPI-Structured price: ${price}`);
+                        return price.trim();
+                    }
+                }
+                
+                // If we reach here, structured data found nothing or non-USD.
+                // Layer 2: Standard Proxy Fallback (Fetch raw US HTML and parse)
+                logger.info(`[${asin}] ScraperAPI-Structured gave no USD. Trying Standard Proxy Fallback...`);
+                const proxyUrl = `https://api.scraperapi.com?api_key=${apiKey}&url=${encodeURIComponent(`https://www.amazon.com/dp/${asin}`)}&country_code=us`;
+                
+                const proxyRes = await axios.get(proxyUrl, { timeout: 60000 });
+                if (proxyRes.status === 200) {
+                    const $ = cheerio.load(proxyRes.data);
+                    const alSelectors = ['#apex-pricetopay-accessibility-label', 'span.apex-pricetopay-value .a-offscreen', '.aok-offscreen', '.a-offscreen'];
+                    for (const sel of alSelectors) {
+                        const txt = $(sel).first().text().trim();
+                        if (txt && txt.includes('$')) {
+                            const m = txt.match(/([$][\d,]+\.?\d*)/);
+                            if (m) {
+                                logger.info(`[${asin}] ScraperAPI-Standard fallback found price: ${m[0]}`);
+                                return m[0];
+                            }
+                        }
+                    }
+                }
+                return null; // Both failed
+            } catch (e) {
+                const isRetryable = e.code === 'ECONNRESET' || e.code === 'ETIMEDOUT' || (e.response && e.response.status >= 500);
+                if (isRetryable && attempts < maxAttempts) {
+                    const delay = Math.pow(2, attempts) * 1000;
+                    logger.warn(`[${asin}] ScraperAPI attempt ${attempts} failed (${e.message}). Retrying in ${delay}ms...`);
+                    await new Promise(r => setTimeout(r, delay));
+                    continue;
+                }
+                logger.warn(`[${asin}] ScraperAPI failed after ${attempts} attempts: ${e.message}`);
+                return null;
+            }
+        }
+    }
+
     async scrapeASIN(product, progressCallback) {
         const { asin, domain } = typeof product === 'string' ? { asin: product, domain: config.scraper.defaultDomain } : product;
         let result = { asin, domain, status: 'FAILED', reason: 'Unknown' };
 
-        // Fix 4: INCREASE HARD CUTOFF TO 50 SECONDS PER ASIN (v12.0)
+        // Fix 4: INCREASE HARD CUTOFF TO 90 SECONDS PER ASIN (v13.0)
         const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('HARD_TIMEOUT')), 60000);
+            setTimeout(() => reject(new Error('HARD_TIMEOUT')), 90000);
         });
+
+        // Fire API request concurrently!
+        const apiPricePromise = this.getPriceFromScraperAPI(asin);
 
         const performScrape = async () => {
             let context = null;
@@ -324,20 +663,25 @@ class ScraperEngine {
                         networkPriceAttempts++;
                         try {
                             const text = await response.text();
+                            
+                            // Better matching strategy: look for "price", "amount", or "displayString" keys near values
+                            // Or just find all $ values and pick the one that DOES NOT look like a list price (usually lower)
                             const matches = text.match(/[\$₹]\s?\d+(?:,\d{3})*(?:\.\d{2})?/g);
-                            logger.info(`[${asin}] [NET] Relevant URL #${networkPriceAttempts}: ${response.url().split('?')[0]} | status=${response.status()} | price matches=${matches ? JSON.stringify(matches.slice(0, 5)) : 'none'}`);
+                            logger.info(`[${asin}] [NET] Relevant URL #${networkPriceAttempts}: ${response.url().split('?')[0]} | matches=${matches ? JSON.stringify(matches.slice(0, 3)) : 'none'}`);
+                            
                             if (matches) {
+                                // Sort by occurrence (logic: usually the first $ in a product JSON is the primary price)
                                 for (const match of matches) {
                                     const cleanMatch = match.replace(/\s/g, '');
-                                    if (cleanMatch !== '$0' && cleanMatch !== '$0.00' && cleanMatch !== '₹0' && cleanMatch !== '₹0.00') {
+                                    // Filter out obviously wrong values
+                                    if (cleanMatch !== '$0' && cleanMatch !== '$0.00' && cleanMatch.length > 2) {
                                         interceptedPrice = cleanMatch;
-                                        logger.info(`[${asin}] [NET] ✔ Network price captured: ${interceptedPrice}`);
                                         break;
                                     }
                                 }
                             }
                         } catch (err) {
-                            logger.warn(`[${asin}] [NET] Could not read response body for ${response.url().split('?')[0]}: ${err.message}`);
+                            // logger.warn(`[${asin}] [NET] Response error: ${err.message}`);
                         }
                     }
                 });
@@ -405,34 +749,54 @@ class ScraperEngine {
                     hasCorePrice: !!document.querySelector('#corePriceDisplay_desktop_feature_div, #corePrice_feature_div'),
                     hasApexOffer: !!document.querySelector('#apex_offerDisplay_desktop'),
                     hasPriceInsideBuybox: !!document.querySelector('#price_inside_buybox'),
-                    allOffscreen: Array.from(document.querySelectorAll('.a-offscreen')).map(e => e.textContent.trim()).slice(0, 15),
+                    allOffscreen: Array.from(document.querySelectorAll('.a-offscreen, .aok-offscreen')).map(e => e.textContent.trim()).slice(0, 15),
                 })).catch(() => ({}));
                 logger.info(`[${asin}] [PAGE-SUMMARY] title="${pageSummary.title}" url="${pageSummary.url}"`);
                 logger.info(`[${asin}] [PAGE-SUMMARY] bodyLen=${pageSummary.bodyLen} productTitle=${pageSummary.hasProductTitle} buyBox=${pageSummary.hasBuyBox}`);
                 logger.info(`[${asin}] [PAGE-SUMMARY] corePrice=${pageSummary.hasCorePrice} apexOffer=${pageSummary.hasApexOffer} priceInsideBuybox=${pageSummary.hasPriceInsideBuybox}`);
                 logger.info(`[${asin}] [PAGE-SUMMARY] all .a-offscreen: ${JSON.stringify(pageSummary.allOffscreen)}`);
 
-                // PRICE EXTRACTION (v14.0) — DOM first, network as last resort
-                // DOM is more accurate; network interception can pick up wrong prices from JS bundles
+                // PRICE EXTRACTION (v15.0) — JSON/meta USD first (real US price), then DOM, then network
                 logger.info(`[${asin}] [PRICE] Network scan complete. Relevant responses seen: ${networkPriceAttempts}. Intercepted: ${interceptedPrice || 'none'}`);
 
-                logger.info(`[${asin}] [PRICE] Running DOM extraction (primary)...`);
-                let livePrice = await getAmazonPrice(page);
+                // Step 1: Try to extract real USD price from embedded JSON/meta in page source
+                // This is the most accurate method \u2014 Amazon always embeds the actual US price here
+                logger.info(`[${asin}] [PRICE] Step 1: Trying JSON/meta USD extraction...`);
+                let livePrice = await extractUSDFromPageJSON(page, asin);
 
-                if (livePrice) {
-                    logger.info(`[${asin}] [PRICE] ✔ DOM extraction succeeded: ${livePrice}`);
-                } else if (interceptedPrice) {
-                    livePrice = interceptedPrice;
-                    logger.info(`[${asin}] [PRICE] DOM found nothing. Using network-intercepted fallback: ${livePrice}`);
-                } else {
-                    logger.warn(`[${asin}] [PRICE] Both DOM and network interception returned nothing.`);
+                // Step 2: DOM extraction (may return INR if Amazon detected Indian IP)
+                if (!livePrice) {
+                    logger.info(`[${asin}] [PRICE] Step 2: JSON failed. Running DOM extraction...`);
+                    const domPrice = await getAmazonPrice(page);
+                    if (domPrice) {
+                        // Only use DOM price if it is already USD (starts with $)
+                        // If it's INR, we'll try convert as last resort
+                        if (domPrice.startsWith('$')) {
+                            livePrice = domPrice;
+                            logger.info(`[${asin}] [PRICE] ✔ DOM extraction gave USD price: ${livePrice}`);
+                        } else {
+                            logger.info(`[${asin}] [PRICE] DOM gave non-USD price: ${domPrice} — ignoring as inaccurate for US targeting`);
+                        }
+                    } else if (interceptedPrice && interceptedPrice.startsWith('$')) {
+                        livePrice = interceptedPrice;
+                        logger.info(`[${asin}] [PRICE] Step 3: Using network fallback: ${livePrice}`);
+                    } else {
+                        logger.warn(`[${asin}] [PRICE] No USD prices found in local DOM/Network.`);
+                    }
                 }
+                
+                // Wait for the concurrent API price to finish
+                const apiPrice = await apiPricePromise;
+                const finalPrice = (apiPrice && apiPrice.includes('$')) ? apiPrice : livePrice;
 
-                logger.info(`[${asin}] [PRICE] ══ FINAL RESOLVED PRICE: ${livePrice || 'N/A (not found)'} ══`);
+                logger.info(`[${asin}] [PRICE] ════════════════════════════════════════════════════════════`);
+                logger.info(`[${asin}] [PRICE] SCRAPER API: ${apiPrice || 'FAILED/NULL'}`);
+                logger.info(`[${asin}] [PRICE] LOCAL LIVE: ${livePrice || 'FAILED/NULL'}`);
+                logger.info(`[${asin}] [PRICE] ❯❯❯ FINAL RESOLVED: ${finalPrice || 'N/A'}`);
+                logger.info(`[${asin}] [PRICE] ════════════════════════════════════════════════════════════`);
 
-                // Pass livePrice into extractWithCheerio
                 const data = await this.extractWithCheerio(
-                    page, asin, progressCallback, livePrice
+                    page, asin, progressCallback, livePrice, apiPrice
                 );
 
                 if (data.title === 'N/A') {
@@ -443,7 +807,7 @@ class ScraperEngine {
 
             } catch (error) {
                 if (error.message === 'HARD_TIMEOUT') {
-                    logger.warn(`[${asin}] Skipped — timed out after 60s`);
+                    logger.warn(`[${asin}] Skipped — timed out after 90s`);
                     return { asin, status: 'PAGE_TIMEOUT', reason: 'HARD_TIMEOUT' };
                 }
                 logger.error(`[SCRAPER] Scrape error for ${asin}: ${error.message}`);
@@ -457,7 +821,7 @@ class ScraperEngine {
             result = await Promise.race([performScrape(), timeoutPromise]);
         } catch (error) {
             if (error.message === 'HARD_TIMEOUT') {
-                logger.warn(`[${asin}] Skipped — timed out after 60s`);
+                logger.warn(`[${asin}] Skipped — timed out after 90s`);
                 result = { asin, status: 'PAGE_TIMEOUT', reason: 'HARD_TIMEOUT' };
             } else {
                 result = { asin, status: 'FAILED', reason: error.message };
@@ -467,7 +831,7 @@ class ScraperEngine {
         return result;
     }
 
-    async extractWithCheerio(page, asin, progressCallback, livePrice = null) {
+    async extractWithCheerio(page, asin, progressCallback, livePrice = null, apiPrice = null) {
         const html = await page.content();
         const $ = cheerio.load(html);
 
@@ -531,7 +895,37 @@ class ScraperEngine {
             results.brand = cleanText(rawBrand.replace(/Visit the\s+/i, '').replace(/\s+Store/i, '').replace(/Brand:\s+/i, '').replace(/^by\s+/i, ''));
         }
 
-        results.price = livePrice || 'N/A';
+        // ScraperAPI = most accurate USD price
+        if (apiPrice && apiPrice.includes('$')) {
+            results.price = apiPrice;
+            logger.info(`[${asin}] Using ScraperAPI price`);
+        } else if (livePrice) {
+            results.price = livePrice;
+            logger.info(`[${asin}] Using live DOM price`);
+        } else {
+            results.price = 'N/A';
+        }
+
+        // Final Price Fallback using Accessibility Labels (same as DOM AL method but for Cheerio)
+        if (results.price === 'N/A' || !results.price) {
+            const alSelectors = ['#apex-pricetopay-accessibility-label', 'span.apex-pricetopay-value .a-offscreen', '.aok-offscreen', '.a-offscreen'];
+            for (const sel of alSelectors) {
+                const el = $(sel).first();
+                if (el.length) {
+                    const txt = el.text().trim();
+                    // FILTER: If on .com, only accept $
+                    const isDotCom = asin.toLowerCase().includes('http') ? asin.includes('amazon.com') : true; // assume .com if asin only
+                    if (isDotCom && !txt.includes('$')) continue;
+
+                    const m = txt.match(/([$₹][\d,]+\.?\d*|INR\s?[\d,]+\.?\d*)/i);
+                    if (m && m[0] && m[0] !== '$0' && m[0] !== '₹0') {
+                        results.price = m[0];
+                        logger.info(`[${asin}] [PRICE] Cheerio AL fallback found price via ${sel}: ${results.price}`);
+                        break;
+                    }
+                }
+            }
+        }
 
         // Cheerio fallback: hidden input with customerVisiblePrice (server-rendered)
         if (results.price === 'N/A' || !results.price) {

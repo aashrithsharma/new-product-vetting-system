@@ -15,6 +15,8 @@ module.exports = {
     },
     scraper: {
         batchSize: parseInt(process.env.BATCH_SIZE) || 25,
+        concurrency: parseInt(process.env.CONCURRENCY) || 5, // Process 5 ASINs in parallel by default
+        relaunchThreshold: 50, // Keep browser longer in parallel mode
         minDelay: 28000,
         maxDelay: 32000,
         retryDelay: parseInt(process.env.RETRY_DELAY_MS) || 10000,

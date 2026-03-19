@@ -6,6 +6,24 @@ const exporter = require('./exporter');
 const config = require('./config');
 const { delay } = require('./utils');
 const urlParser = require('./urlParser');
+const axios = require('axios');
+
+async function fetchLiveExchangeRate() {
+    try {
+        // Free endpoint — no API key required
+        const res = await axios.get('https://open.er-api.com/v6/latest/USD', { timeout: 8000 });
+        const rate = res.data && res.data.rates && res.data.rates.INR;
+        if (rate && rate > 0) {
+            logger.info(`[ORCHESTRATOR] Live exchange rate fetched: 1 USD = ${rate} INR`);
+            return rate;
+        }
+        throw new Error('INR rate missing from response');
+    } catch (err) {
+        const fallback = 90; // Updated fallback (real rate ~92 as of Mar 2026)
+        logger.warn(`[ORCHESTRATOR] Exchange rate fetch failed (${err.message}). Using fallback: 1 USD = ${fallback} INR`);
+        return fallback;
+    }
+}
 
 class Orchestrator {
     constructor() {
@@ -51,93 +69,112 @@ class Orchestrator {
         const startTime = Date.now();
 
         try {
-            // Exchange rate fetching removed (Direct INR output)
-            global.exchangeRate = null;
+            // Fetch live USD/INR exchange rate before scraping
+            global.exchangeRate = await fetchLiveExchangeRate();
+            this.addLog(runId, 'INFO', `Live exchange rate: 1 USD = ${global.exchangeRate.toFixed(2)} INR`);
 
             await scraper.init();
             this.addLog(runId, 'INFO', 'Persistent browser launched. Starting optimized run.');
 
             let asinCount = 0;
             let firstPassFailures = [];
+            const concurrency = config.scraper.concurrency || 5;
 
-            // 1. Initial Scraping Pass
-            for (let i = 0; i < products.length; i++) {
-                if (run.status === 'cancelled') break;
+            // 1. Initial Scraping Pass (Parallel)
+            this.addLog(runId, 'INFO', `Starting Initial Pass with concurrency: ${concurrency}`);
 
-                // Browser relaunch every 15 ASINs (v14.0)
-                if (asinCount % 15 === 0 && asinCount !== 0) {
-                    this.addLog(runId, 'INFO', 'Browser relaunching for fresh session...');
-                    await scraper.close();
-                    await delay(3000);
-                    await scraper.init();
+            const productQueue = [...products];
+            const activeWorkers = [];
+
+            const worker = async () => {
+                while (productQueue.length > 0 && run.status !== 'cancelled') {
+                    const product = productQueue.shift();
+                    if (!product) break;
+
+                    this.addLog(runId, 'INFO', `Scraping: ${product.asin}`);
+                    const startTimeAsin = Date.now();
+                    
+                    try {
+                        const result = await scraper.scrapeASIN(product, (log) => {
+                            const [type, id, msg] = log.split('|');
+                            this.addLog(runId, type, `${id} \u2014 ${msg}`);
+                        });
+
+                        const durationAsin = ((Date.now() - startTimeAsin) / 1000).toFixed(1);
+                        result.duration = durationAsin;
+                        result.originalUrl = product.originalUrl;
+
+                        run.results.push(result);
+                        run.completedAsins++;
+                        asinCount++;
+
+                        const timeStr = `completed in ${result.duration}s`;
+                        if (result.status === 'SUCCESS') {
+                            run.succeededAsins++;
+                            const d = result.data;
+                            this.addLog(runId, 'CHECK', `[ASIN ${run.completedAsins}/${run.totalAsins}] ${product.asin} \u2014 ${timeStr} \u2014 ${d.price}`);
+                        } else {
+                            // Collect failures for Second Chance pass
+                            firstPassFailures.push({ product, index: run.results.length - 1 });
+                            if (result.status === 'CAPTCHA_BLOCKED') run.blockedAsins++;
+                            else run.failedAsins++;
+                            this.addLog(runId, 'ERROR', `[ASIN ${run.completedAsins}/${run.totalAsins}] ${product.asin} \u2014 ${result.status} (Will retry)`);
+                        }
+
+                        // Updated estimate (Average 15s per ASIN / concurrency)
+                        const remaining = (products.length - run.completedAsins) + firstPassFailures.length;
+                        run.estimatedSecondsRemaining = Math.max(0, Math.floor((remaining * 15) / concurrency));
+
+                    } catch (err) {
+                        this.addLog(runId, 'ERROR', `Unexpected error on ${product.asin}: ${err.message}`);
+                    }
                 }
+            };
 
-                const product = products[i];
-                this.addLog(runId, 'INFO', `Scraping: ${product.asin}`);
-
-                const startTimeAsin = Date.now();
-                const result = await scraper.scrapeASIN(product, (log) => {
-                    const [type, id, msg] = log.split('|');
-                    this.addLog(runId, type, `${id} \u2014 ${msg}`);
-                });
-                const durationAsin = ((Date.now() - startTimeAsin) / 1000).toFixed(1);
-                result.duration = durationAsin;
-                result.originalUrl = product.originalUrl;
-
-                run.results.push(result);
-                run.completedAsins++;
-                asinCount++;
-
-                const timeStr = `completed in ${result.duration}s`;
-                if (result.status === 'SUCCESS') {
-                    run.succeededAsins++;
-                    const d = result.data;
-                    this.addLog(runId, 'CHECK', `[ASIN ${run.completedAsins}/${run.totalAsins}] ${product.asin} \u2014 ${timeStr} \u2014 ${d.price}`);
-                } else {
-                    // Collect failures for Second Chance pass
-                    firstPassFailures.push({ product, index: run.results.length - 1 });
-                    if (result.status === 'CAPTCHA_BLOCKED') run.blockedAsins++;
-                    else run.failedAsins++;
-                    this.addLog(runId, 'ERROR', `[ASIN ${run.completedAsins}/${run.totalAsins}] ${product.asin} \u2014 ${result.status} (Will retry)`);
-                }
-
-                // Update estimate (12s per ASIN + 12s delay)
-                const remaining = (products.length - run.completedAsins) + firstPassFailures.length;
-                run.estimatedSecondsRemaining = Math.max(0, Math.floor(remaining * 24));
-
-                if (i + 1 < products.length && run.status !== 'cancelled') {
-                    this.addLog(runId, 'CLOCK', `Short delay (12s) before next product...`);
-                    await delay(12000);
-                }
+            // Start workers with a 2s staggered start to avoid resource spikes
+            for (let i = 0; i < concurrency; i++) {
+                activeWorkers.push(worker());
+                if (i < concurrency - 1) await delay(2000);
             }
 
-            // 2. Second Chance Pass (v14.0: Target 100% success)
+            await Promise.all(activeWorkers);
+
+            // 2. Second Chance Pass (v14.0: Target 100% success) - ParallelIZED
             if (firstPassFailures.length > 0 && run.status !== 'cancelled') {
                 this.addLog(runId, 'INFO', `Starting Second Chance pass for ${firstPassFailures.length} failed items...`);
                 await scraper.close();
-                await delay(5000);
+                await delay(3000);
                 await scraper.init();
 
-                for (const { product, index } of firstPassFailures) {
-                    if (run.status === 'cancelled') break;
+                const retryQueue = [...firstPassFailures];
+                const retryWorkers = [];
 
-                    this.addLog(runId, 'INFO', `Retrying: ${product.asin}`);
-                    const retryResult = await scraper.scrapeASIN(product);
-                    retryResult.originalUrl = product.originalUrl;
-
-                    if (retryResult.status === 'SUCCESS') {
-                        // Update state
-                        if (run.results[index].status === 'CAPTCHA_BLOCKED') run.blockedAsins--;
-                        else run.failedAsins--;
+                const retryWorker = async () => {
+                    while (retryQueue.length > 0 && run.status !== 'cancelled') {
+                        const { product, index } = retryQueue.shift();
+                        this.addLog(runId, 'INFO', `Retrying: ${product.asin}`);
                         
-                        run.succeededAsins++;
-                        run.results[index] = retryResult;
-                        this.addLog(runId, 'CHECK', `[RETRY SUCCESS] ${product.asin} \u2014 ${retryResult.data.price}`);
-                    } else {
-                        this.addLog(runId, 'ERROR', `[RETRY FAILED] ${product.asin} \u2014 ${retryResult.status}`);
+                        const retryResult = await scraper.scrapeASIN(product);
+                        retryResult.originalUrl = product.originalUrl;
+
+                        if (retryResult.status === 'SUCCESS') {
+                            if (run.results[index].status === 'CAPTCHA_BLOCKED') run.blockedAsins--;
+                            else run.failedAsins--;
+                            
+                            run.succeededAsins++;
+                            run.results[index] = retryResult;
+                            this.addLog(runId, 'CHECK', `[RETRY SUCCESS] ${product.asin} \u2014 ${retryResult.data.price}`);
+                        } else {
+                            this.addLog(runId, 'ERROR', `[RETRY FAILED] ${product.asin} \u2014 ${retryResult.status}`);
+                        }
                     }
-                    await delay(8000);
+                };
+
+                for (let i = 0; i < Math.min(concurrency, retryQueue.length); i++) {
+                    retryWorkers.push(retryWorker());
+                    if (i < concurrency - 1) await delay(1000);
                 }
+                await Promise.all(retryWorkers);
             }
 
             // 3. Finalization
