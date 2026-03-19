@@ -10,9 +10,12 @@ module.exports = {
         sheetId: process.env.GOOGLE_SHEET_ID,
         credentialsPath: process.env.GOOGLE_APPLICATION_CREDENTIALS || 'credentials/google-service-account.json',
     },
+    // Slack removed
+    /*
     slack: {
         webhookUrl: process.env.SLACK_WEBHOOK_URL,
     },
+    */
     scraper: {
         batchSize: parseInt(process.env.BATCH_SIZE) || 25,
         concurrency: parseInt(process.env.CONCURRENCY) || 5, // Process 5 ASINs in parallel by default

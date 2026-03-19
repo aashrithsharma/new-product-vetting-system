@@ -1,7 +1,7 @@
 const logger = require('./logger');
 const scraper = require('./scraper');
 const sheets = require('./sheets');
-const notifier = require('./notifier');
+// const notifier = require('./notifier'); // Slack removed
 const exporter = require('./exporter');
 const config = require('./config');
 const { delay } = require('./utils');
@@ -191,6 +191,7 @@ class Orchestrator {
                 run.isComplete = true;
 
                 const duration = (Date.now() - startTime) / 60000;
+                /*
                 await notifier.sendNotification({
                     status: 'complete',
                     trigger: run.triggerSource,
@@ -202,6 +203,8 @@ class Orchestrator {
                     sheetLink: run.sheetLink,
                     failedAsins: run.results.filter(r => r.status !== 'SUCCESS').map(r => ({ asin: r.asin, reason: r.reason }))
                 });
+                */
+                logger.info('[ORCHESTRATOR] Run summary notification skipped (Slack disabled)');
             }
 
         } catch (error) {
