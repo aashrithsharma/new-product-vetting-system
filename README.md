@@ -6,12 +6,13 @@ A fully automated Amazon product data scraper that extracts pricing, reviews, ra
 
 ## ✨ Features
 
-- **Multi-method price extraction** — hidden input fields, DOM selectors, and network interception, in priority order
+- **Multi-method price extraction** — hidden input fields, DOM selectors, ScraperAPI structured data, and network interception
+- **High-speed Parallel Processing** — processes multiple ASINs simultaneously using a configurable concurrency pool
+- **ScraperAPI Integration** — built-in support for ScraperAPI to ensure 100% success rate on difficult items
 - **Stealth browser** — uses Playwright + `puppeteer-extra-plugin-stealth` to avoid bot detection
 - **Smart ASIN parsing** — accepts raw ASINs, `/dp/` URLs, or full Amazon product URLs (`.com`, `.in`, `.co.uk`, etc.)
 - **Multiple output formats** — CSV (vertical layout), Excel (with embedded product images), and Google Sheets
-- **Second Chance retry** — failed ASINs automatically get one retry with a fresh browser session
-- **Automated scheduling** — runs a daily scrape at 7 AM (configurable) via cron
+- **Second Chance retry** — failed ASINs automatically get one retry with a fresh browser session (also parallelized)
 - **Drop-folder trigger** — drop a CSV into the `watch/` folder to trigger a scrape automatically
 - **Duplicate deduplication** — same ASIN from multiple inputs is scraped only once
 
@@ -87,15 +88,13 @@ The web UI will be available at **http://localhost:3000**
 
 Copy `.env.example` to `.env` and fill in your values:
 
-| Variable | Default | Description |
-|---|---|---|
 | `PORT` | `3000` | Port the server listens on |
-| `SCRAPE_SCHEDULE` | `0 7 * * *` | Cron expression for daily auto-run |
-| `SCRAPE_TIMEZONE` | `America/New_York` | Timezone for the cron schedule |
+| `CONCURRENCY` | `5` | Number of ASINs to process in parallel |
+| `SCRAPERAPI_KEY` | *(optional)* | API key for ScraperAPI fallback/concurrent checks |
 | `GOOGLE_SHEET_ID` | *(required)* | Google Sheets document ID |
 | `GOOGLE_APPLICATION_CREDENTIALS` | `credentials/google-service-account.json` | Path to service account key |
 | `SLACK_WEBHOOK_URL` | *(optional)* | Slack Incoming Webhook URL |
-| `BATCH_SIZE` | `25` | Max ASINs per browser session before relaunch |
+| `BATCH_SIZE` | `25` | Max ASINs per individual browser session |
 | `RETRY_DELAY_MS` | `10000` | Delay before retrying a failed ASIN |
 | `DEFAULT_AMAZON_DOMAIN` | `amazon.com` | Fallback domain when none is detected from URL |
 
@@ -184,8 +183,7 @@ watch/
 └── products.csv   ← drop here
 ```
 
-### 4. Daily scheduler
-Add ASINs/URLs (one per line) to `data/watchlist.csv`. The system automatically scrapes them at the configured time (default: 7 AM New York).
+---
 
 ---
 
@@ -226,8 +224,8 @@ Results are exported in a **vertical layout** — each row is a field, each colu
 
 ## 🔁 Retry Logic
 
-- **First pass**: All ASINs are scraped sequentially with a 12-second delay between each.
-- **Second Chance pass**: Any ASIN that failed (except `NO_PRODUCT`) is retried once with a fresh browser session and 8-second delays.
+- **First pass**: All ASINs are scraped in **parallel** using a worker pool (default: 5 at a time).
+- **Second Chance pass**: Any ASIN that failed (except `NO_PRODUCT`) is retried once with a fresh browser session. The retry pass is also parallelized.
 - Each ASIN is **never retried more than once**.
 
 ---
@@ -288,8 +286,7 @@ Key log prefixes:
 | `[PRICE]` | Price extraction pipeline steps |
 | `[NET]` | Network response interception |
 | `[PAGE-SUMMARY]` | DOM element presence after page load |
-| `[ORCHESTRATOR]` | Run management, retries, finalization |
-| `[SCHEDULER]` | Cron job events |
+| `[ORCHESTRATOR]` | Run management, parallel workers, finalization |
 | `[WATCHER]` | Drop-folder file detection |
 | `[EXPORTER]` | CSV/Excel generation |
 | `[SHEETS]` | Google Sheets write events |
