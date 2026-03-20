@@ -16,7 +16,12 @@ class SheetsService {
         try {
             if (!config.google.sheetId) throw new Error('GOOGLE_SHEET_ID missing');
 
-            const credentials = JSON.parse(fs.readFileSync(config.google.credentialsPath));
+            let credentials;
+            if (process.env.GOOGLE_CREDENTIALS) {
+                credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+            } else {
+                credentials = JSON.parse(fs.readFileSync(config.google.credentialsPath));
+            }
             this.auth = new google.auth.GoogleAuth({
                 credentials,
                 scopes: ['https://www.googleapis.com/auth/spreadsheets'],
