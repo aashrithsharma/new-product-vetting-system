@@ -18,10 +18,7 @@
         "fs-extra": "^11.3.4",
         "googleapis": "^126.0.0",
         "node-cron": "^3.0.2",
-        "playwright": "^1.38.1",
-        "playwright-extra": "^4.3.6",
         "pm2": "^6.0.14",
-        "puppeteer-extra-plugin-stealth": "^2.11.2",
         "winston": "^3.11.0",
         "winston-daily-rotate-file": "^4.7.1"
     },

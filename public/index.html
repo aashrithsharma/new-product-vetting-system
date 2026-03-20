@@ -920,7 +920,6 @@
             if (formats.includes('csv')) {
                 const dl = document.getElementById('dlCsv');
                 dl.onclick = () => window.location.href = `/api/scrape/${currentRunId}/download/csv`;
-                window.location.href = `/api/scrape/${currentRunId}/download/csv`;
             } else {
                 document.getElementById('dlCsv').classList.add('hidden');
             }
@@ -928,7 +927,6 @@
             if (formats.includes('xlsx')) {
                 const dl = document.getElementById('dlXlsx');
                 dl.onclick = () => window.location.href = `/api/scrape/${currentRunId}/download/xlsx`;
-                setTimeout(() => { window.location.href = `/api/scrape/${currentRunId}/download/xlsx`; }, 1000);
             } else {
                 document.getElementById('dlXlsx').classList.add('hidden');
             }
