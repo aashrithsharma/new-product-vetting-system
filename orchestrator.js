@@ -131,10 +131,8 @@ class Orchestrator {
                 }
             };
 
-            // Start workers with a 2s staggered start to avoid resource spikes
             for (let i = 0; i < concurrency; i++) {
                 activeWorkers.push(worker());
-                if (i < concurrency - 1) await delay(2000);
             }
 
             await Promise.all(activeWorkers);
@@ -142,9 +140,7 @@ class Orchestrator {
             // 2. Second Chance Pass (v14.0: Target 100% success) - ParallelIZED
             if (firstPassFailures.length > 0 && run.status !== 'cancelled') {
                 this.addLog(runId, 'INFO', `Starting Second Chance pass for ${firstPassFailures.length} failed items...`);
-                await scraper.close();
-                await delay(3000);
-                await scraper.init();
+                // No browser restart needed anymore since we use pure HTTP requests
 
                 const retryQueue = [...firstPassFailures];
                 const retryWorkers = [];
@@ -172,7 +168,6 @@ class Orchestrator {
 
                 for (let i = 0; i < Math.min(concurrency, retryQueue.length); i++) {
                     retryWorkers.push(retryWorker());
-                    if (i < concurrency - 1) await delay(1000);
                 }
                 await Promise.all(retryWorkers);
             }
