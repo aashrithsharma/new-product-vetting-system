@@ -18,9 +18,24 @@ class SheetsService {
 
             let credentials;
             if (process.env.GOOGLE_CREDENTIALS) {
-                credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+                // Remove accidental prefix characters like dashes the user might have pasted
+                let cleanCreds = process.env.GOOGLE_CREDENTIALS.trim();
+                if (cleanCreds.startsWith('-')) cleanCreds = cleanCreds.substring(1).trim();
+                credentials = JSON.parse(cleanCreds);
             } else {
-                credentials = JSON.parse(fs.readFileSync(config.google.credentialsPath));
+                let credString = config.google.credentialsPath || '';
+                credString = credString.trim();
+                if (credString.startsWith('-')) credString = credString.substring(1).trim();
+                
+                try {
+                    credentials = JSON.parse(credString);
+                } catch (e) {
+                    // If it contains "service_account", they pasted broken JSON into Vercel, don't read from file
+                    if (credString.includes('service_account')) {
+                        throw new Error('Google Credentials JSON appears slightly malformed. Make sure it starts with {');
+                    }
+                    credentials = JSON.parse(fs.readFileSync(credString, 'utf8'));
+                }
             }
             this.auth = new google.auth.GoogleAuth({
                 credentials,
