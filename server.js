@@ -9,20 +9,22 @@ const app = express();
 app.use(express.json());
 
 // Basic Authentication Middleware
-const APP_PASSWORD = process.env.APP_PASSWORD;
-if (APP_PASSWORD) {
-    app.use((req, res, next) => {
-        const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
-        const [login, password] = Buffer.from(b64auth, 'base64').toString().split(':');
+app.use((req, res, next) => {
+    const appPassword = process.env.APP_PASSWORD;
+    if (!appPassword) return next();
 
-        if (login === 'admin' && password === APP_PASSWORD) {
-            return next();
-        }
+    const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
+    const parts = Buffer.from(b64auth, 'base64').toString().split(':');
+    const login = parts[0];
+    const password = parts.slice(1).join(':');
 
-        res.set('WWW-Authenticate', 'Basic realm="Secure Area"');
-        res.status(401).send('Authentication required. Please provide credentials.');
-    });
-}
+    if (login === 'admin' && password === appPassword) {
+        return next();
+    }
+
+    res.set('WWW-Authenticate', 'Basic realm="Secure Area"');
+    res.status(401).send('Authentication required. Please provide credentials.');
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 
