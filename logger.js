@@ -9,32 +9,33 @@ const logFormat = winston.format.combine(
   })
 );
 
-const infoTransport = new winston.transports.DailyRotateFile({
-  filename: path.join('logs', 'scraper-%DATE%.log'),
-  datePattern: 'YYYY-MM-DD',
-  level: 'info',
-  maxFiles: '14d',
-});
+const transports = [
+  new winston.transports.Console({
+    format: winston.format.combine(
+      winston.format.colorize(),
+      logFormat
+    )
+  })
+];
 
-const errorTransport = new winston.transports.DailyRotateFile({
-  filename: path.join('logs', 'errors-%DATE%.log'),
-  datePattern: 'YYYY-MM-DD',
-  level: 'warn',
-  maxFiles: '14d',
-});
+if (!process.env.VERCEL) {
+  transports.push(new winston.transports.DailyRotateFile({
+    filename: path.join('logs', 'scraper-%DATE%.log'),
+    datePattern: 'YYYY-MM-DD',
+    level: 'info',
+    maxFiles: '14d',
+  }));
+  transports.push(new winston.transports.DailyRotateFile({
+    filename: path.join('logs', 'errors-%DATE%.log'),
+    datePattern: 'YYYY-MM-DD',
+    level: 'warn',
+    maxFiles: '14d',
+  }));
+}
 
 const logger = winston.createLogger({
   format: logFormat,
-  transports: [
-    infoTransport,
-    errorTransport,
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        logFormat
-      )
-    })
-  ],
+  transports
 });
 
 module.exports = logger;

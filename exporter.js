@@ -28,10 +28,11 @@ async function generateOutputs(results, runId) {
     const timestamp = `${datePart}-${timePart}`;
 
     const baseName = `competitor-research-${timestamp}`;
-    const csvPath = path.join('outputs', `${baseName}.csv`);
-    const xlsxPath = path.join('outputs', `${baseName}.xlsx`);
+    const baseDir = process.env.VERCEL ? '/tmp/outputs' : 'outputs';
+    const csvPath = path.join(baseDir, `${baseName}.csv`);
+    const xlsxPath = path.join(baseDir, `${baseName}.xlsx`);
 
-    await fs.ensureDir('outputs');
+    await fs.ensureDir(baseDir);
     const outputs = {};
 
     const rows = [
