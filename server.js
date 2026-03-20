@@ -10,8 +10,21 @@ app.use(express.json());
 
 // Basic Authentication Middleware
 app.use((req, res, next) => {
+    // Check if the variable exists at all
     const appPassword = process.env.APP_PASSWORD;
-    if (!appPassword) return next();
+    
+    // If it's completely missing from Vercel, throw a glaring error so they instantly know the issue
+    if (!appPassword) {
+        return res.status(500).send(`
+            <h1 style="color:red; font-family:sans-serif; text-align:center; margin-top:50px;">
+                SECURITY ERROR: APP_PASSWORD IS MISSING!
+            </h1>
+            <p style="text-align:center; font-family:sans-serif;">
+                You did not configure the <b>APP_PASSWORD</b> environment variable correctly in your Vercel Dashboard!<br><br>
+                Please go to Vercel -> Settings -> Environment Variables, and add a variable with the EXACT uppercase Name <b>APP_PASSWORD</b> and redeploy.
+            </p>
+        `);
+    }
 
     const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
     const parts = Buffer.from(b64auth, 'base64').toString().split(':');
