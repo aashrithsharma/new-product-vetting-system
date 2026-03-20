@@ -7,6 +7,23 @@ const config = require('./config');
 
 const app = express();
 app.use(express.json());
+
+// Basic Authentication Middleware
+const APP_PASSWORD = process.env.APP_PASSWORD;
+if (APP_PASSWORD) {
+    app.use((req, res, next) => {
+        const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
+        const [login, password] = Buffer.from(b64auth, 'base64').toString().split(':');
+
+        if (login === 'admin' && password === APP_PASSWORD) {
+            return next();
+        }
+
+        res.set('WWW-Authenticate', 'Basic realm="Secure Area"');
+        res.status(401).send('Authentication required. Please provide credentials.');
+    });
+}
+
 app.use(express.static('public'));
 
 // Routes
