@@ -26,7 +26,7 @@ app.use((req, res, next) => {
     res.status(401).send('Authentication required. Please provide credentials.');
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'app_views')));
 
 // Routes
 app.get('/api/status', (req, res) => {
