@@ -131,8 +131,10 @@ class Orchestrator {
                 }
             };
 
+            // Start workers with a 2s staggered start to avoid resource spikes/rate limits
             for (let i = 0; i < concurrency; i++) {
                 activeWorkers.push(worker());
+                if (i < concurrency - 1) await delay(2000);
             }
 
             await Promise.all(activeWorkers);
@@ -168,6 +170,7 @@ class Orchestrator {
 
                 for (let i = 0; i < Math.min(concurrency, retryQueue.length); i++) {
                     retryWorkers.push(retryWorker());
+                    if (i < concurrency - 1) await delay(1000);
                 }
                 await Promise.all(retryWorkers);
             }
