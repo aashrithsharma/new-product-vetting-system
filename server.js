@@ -110,10 +110,20 @@ app.post('/api/scrape', async (req, res) => {
             return res.status(400).json({ error: 'No valid ASINs found \u2014 please check your inputs (Format: /dp/B0... or raw ASIN).' });
         }
 
+        function extractSheetId(input) {
+            if (!input) return null;
+            // Examples:
+            // 1. Full URL: https://docs.google.com/spreadsheets/d/1abc123/edit#gid=0
+            // 2. ID: 1abc123
+            const match = input.match(/\/d\/([a-zA-Z0-9-_]+)/);
+            return match ? match[1] : input.trim();
+        }
+
         const runId = await orchestrator.startRun({
             products: finalProducts,
             formats,
             writeToSheets,
+            customSheetId: extractSheetId(req.body.customSheetId),
             triggerSource: 'Web App'
         });
 

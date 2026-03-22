@@ -31,7 +31,7 @@ class Orchestrator {
         this.currentRunId = null;
     }
 
-    async startRun({ products, formats, writeToSheets, triggerSource }) {
+    async startRun({ products, formats, writeToSheets, triggerSource, customSheetId }) {
         if (this.currentRunId && this.runs.get(this.currentRunId).status === 'running') {
             throw new Error('A scrape is already in progress.');
         }
@@ -50,6 +50,7 @@ class Orchestrator {
             isComplete: false,
             formats,
             writeToSheets,
+            customSheetId, // Store the custom sheet ID
             triggerSource,
             results: [],
             outputs: {}
@@ -181,8 +182,8 @@ class Orchestrator {
                 this.addLog(runId, 'INFO', 'Run complete. Finalizing...');
 
                 if (run.writeToSheets) {
-                    await sheets.init();
-                    run.sheetLink = await sheets.writeResults(run.results);
+                    await sheets.init(run.customSheetId);
+                    run.sheetLink = await sheets.writeResults(run.results, run.customSheetId);
                 }
 
                 run.outputs = await exporter.generateOutputs(run.results, runId);

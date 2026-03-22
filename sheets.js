@@ -12,9 +12,10 @@ class SheetsService {
         this.sheets = null;
     }
 
-    async init() {
+    async init(sheetId) {
         try {
-            if (!config.google.sheetId) throw new Error('GOOGLE_SHEET_ID missing');
+            const spreadsheetId = sheetId || config.google.sheetId;
+            if (!spreadsheetId) throw new Error('GOOGLE_SHEET_ID missing');
 
             let credentials;
             if (process.env.GOOGLE_CREDENTIALS) {
@@ -28,12 +29,14 @@ class SheetsService {
                 if (credString.startsWith('-')) credString = credString.substring(1).trim();
                 
                 try {
+                    // Try parsing as JSON first (if pasted in Vercel)
                     credentials = JSON.parse(credString);
                 } catch (e) {
                     // If it contains "service_account", they pasted broken JSON into Vercel, don't read from file
                     if (credString.includes('service_account')) {
                         throw new Error('Google Credentials JSON appears slightly malformed. Make sure it starts with {');
                     }
+                    // Fallback to reading file
                     credentials = JSON.parse(fs.readFileSync(credString, 'utf8'));
                 }
             }
@@ -43,19 +46,19 @@ class SheetsService {
             });
             const authClient = await this.auth.getClient();
             this.sheets = google.sheets({ version: 'v4', auth: authClient });
-            logger.info('[SHEETS] Google Sheets API initialized');
+            logger.info(`[SHEETS] Google Sheets API initialized for Sheet: ${spreadsheetId}`);
         } catch (error) {
             logger.error(`[SHEETS] Initialization error: ${error.message}`);
             throw error;
         }
     }
 
-    async writeResults(results) {
-        const spreadsheetId = config.google.sheetId;
+    async writeResults(results, sheetId) {
+        const spreadsheetId = sheetId || config.google.sheetId;
         const sheetTitle = 'Sheet1'; // Default and only sheet
 
         try {
-            await this.init();
+            await this.init(spreadsheetId);
 
             // 1. Prepare Horizontal Data
             const dateStr = new Date().toLocaleString();
