@@ -4,7 +4,8 @@ const config = require('./config');
 const logger = require('./logger');
 
 /**
- * Google Sheets Service
+ * Google Sheets Service — Vertical Format (products as columns, attributes as rows)
+ * Matches the white-background layout: Image row, Brand, ASIN, Link, Price, Stars, Reviews, Title
  */
 class SheetsService {
     constructor() {
@@ -19,7 +20,6 @@ class SheetsService {
 
             let credentials;
             if (process.env.GOOGLE_CREDENTIALS) {
-                // Remove accidental prefix characters like dashes the user might have pasted
                 let cleanCreds = process.env.GOOGLE_CREDENTIALS.trim();
                 if (cleanCreds.startsWith('-')) cleanCreds = cleanCreds.substring(1).trim();
                 credentials = JSON.parse(cleanCreds);
@@ -27,19 +27,16 @@ class SheetsService {
                 let credString = config.google.credentialsPath || '';
                 credString = credString.trim();
                 if (credString.startsWith('-')) credString = credString.substring(1).trim();
-                
                 try {
-                    // Try parsing as JSON first (if pasted in Vercel)
                     credentials = JSON.parse(credString);
                 } catch (e) {
-                    // If it contains "service_account", they pasted broken JSON into Vercel, don't read from file
                     if (credString.includes('service_account')) {
                         throw new Error('Google Credentials JSON appears slightly malformed. Make sure it starts with {');
                     }
-                    // Fallback to reading file
                     credentials = JSON.parse(fs.readFileSync(credString, 'utf8'));
                 }
             }
+
             this.auth = new google.auth.GoogleAuth({
                 credentials,
                 scopes: ['https://www.googleapis.com/auth/spreadsheets'],
@@ -54,137 +51,264 @@ class SheetsService {
     }
 
     async writeResults(results, sheetId) {
+        if (!results || results.length === 0) {
+            logger.warn('[SHEETS] No results to write to Google Sheets');
+            return null;
+        }
+
         const spreadsheetId = sheetId || config.google.sheetId;
-        const sheetTitle = 'Sheet1'; // Default and only sheet
+        if (!spreadsheetId) {
+            logger.error('[SHEETS] No Spreadsheet ID provided and no default found in config');
+            return null;
+        }
 
         try {
             await this.init(spreadsheetId);
 
-            // 1. Prepare Horizontal Data
-            const dateStr = new Date().toLocaleString();
-            
-            // Define Headers
-            const headers = [
-                'Date',
-                'ASIN',
-                'Title',
-                'Brand',
-                'Price',
-                'Stars',
-                'Reviews',
-                'Status',
-                'Form',
-                'Image',
-                'Product Link'
+            // Fetch Spreadsheet Metadata
+            const spreadsheetRes = await this.sheets.spreadsheets.get({ spreadsheetId });
+            const sheetsList = spreadsheetRes.data.sheets || [];
+            if (sheetsList.length === 0) throw new Error('No sheets found in the spreadsheet');
+
+            const targetSheet = sheetsList.find(s => s.properties.title === 'Sheet1') || sheetsList[0];
+            const sheetTitle = targetSheet.properties.title;
+            const sheetIdInt = targetSheet.properties.sheetId;
+
+            logger.info(`[SHEETS] Target sheet identified: "${sheetTitle}" (ID: ${sheetIdInt})`);
+
+            // ── Row definitions (vertical layout) ──────────────────────────────
+            // Each entry = one row in the sheet; products fill columns B, C, D...
+            const rowDefs = [
+                { label: 'Product Link -->',       key: 'link' },
+                { label: '',                        key: '_image' },   // Image row (tall)
+                { label: 'Form',                    key: 'form' },
+                { label: 'Brand Name',              key: 'brand' },
+                { label: 'ASIN',                    key: 'asin' },
+                { label: 'Link',                    key: 'link' },
+                { label: 'Selling Price during season', key: 'price' },
+                { label: 'Sales/day during season', key: '_blank' },   // manual field
+                { label: 'Stars',                   key: 'stars' },
+                { label: 'Reviews',                 key: 'reviews' },
+                { label: 'Title',                   key: 'title' },
             ];
 
-            // Check if sheet is empty to write headers
-            const check = await this.sheets.spreadsheets.values.get({
+            // ── Clear the sheet first so we always write fresh ─────────────────
+            await this.sheets.spreadsheets.values.clear({
                 spreadsheetId,
-                range: `${sheetTitle}!A1:Z1`
+                range: `'${sheetTitle}'!A1:ZZ`,
             });
 
-            const hasHeaders = check.data.values && check.data.values[0] && check.data.values[0].length > 0;
-            
-            if (!hasHeaders) {
-                await this.sheets.spreadsheets.values.update({
-                    spreadsheetId,
-                    range: `${sheetTitle}!A1`,
-                    valueInputOption: 'USER_ENTERED',
-                    resource: { values: [headers] }
-                });
+            // ── Build 2D values array ──────────────────────────────────────────
+            // Rows = attributes, Columns = [A: label, B: product 1, C: product 2, ...]
+            const sheetData = rowDefs.map(rowDef => {
+                const cells = [rowDef.label]; // Column A = label
 
-                // Format Headers
-                const spreadsheet = await this.sheets.spreadsheets.get({ spreadsheetId });
-                const sheet = spreadsheet.data.sheets.find(s => s.properties.title === sheetTitle) || spreadsheet.data.sheets[0];
-                const sheetId = sheet.properties.sheetId;
+                for (const r of results) {
+                    const d = r.data || {};
+                    let val = '';
 
-                await this.sheets.spreadsheets.batchUpdate({
-                    spreadsheetId,
-                    resource: {
-                        requests: [
-                            {
-                                repeatCell: {
-                                    range: { sheetId, startRowIndex: 0, endRowIndex: 1 },
-                                    cell: {
-                                        userEnteredFormat: {
-                                            backgroundColor: { red: 0.1, green: 0.2, blue: 0.4 },
-                                            textFormat: { foregroundColor: { red: 1, green: 1, blue: 1 }, bold: true },
-                                            horizontalAlignment: 'CENTER'
-                                        }
-                                    },
-                                    fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)'
-                                }
-                            },
-                            {
-                                updateSheetProperties: {
-                                    properties: { sheetId, gridProperties: { frozenRowCount: 1 } },
-                                    fields: 'gridProperties.frozenRowCount'
-                                }
+                    switch (rowDef.key) {
+                        case 'link':
+                            val = r.originalUrl || d.originalUrl || `https://www.amazon.com/dp/${r.asin}?psc=1`;
+                            break;
+                        case '_image':
+                            // Use IMAGE() formula so the thumbnail shows inline
+                            val = d.imageUrl ? `=IMAGE("${d.imageUrl}")` : '';
+                            break;
+                        case 'form':
+                            val = d.form || 'N/A';
+                            break;
+                        case 'brand':
+                            val = d.brand || 'N/A';
+                            break;
+                        case 'asin':
+                            val = r.asin || 'N/A';
+                            break;
+                        case 'price':
+                            val = d.price || 'N/A';
+                            break;
+                        case 'stars':
+                            val = d.stars || 'N/A';
+                            break;
+                        case 'reviews':
+                            val = d.reviews || 'N/A';
+                            break;
+                        case 'title':
+                            val = d.title || 'N/A';
+                            break;
+                        case '_blank':
+                        default:
+                            val = '';
+                    }
+
+                    cells.push(val);
+                }
+
+                return cells;
+            });
+
+            // ── Write all data at once ─────────────────────────────────────────
+            await this.sheets.spreadsheets.values.update({
+                spreadsheetId,
+                range: `'${sheetTitle}'!A1`,
+                valueInputOption: 'USER_ENTERED',
+                resource: { values: sheetData },
+            });
+
+            logger.info(`[SHEETS] Wrote ${results.length} products (vertical) to "${sheetTitle}"`);
+
+            // ── Formatting ────────────────────────────────────────────────────
+            const numProducts = results.length; // number of product columns
+            const numRows = rowDefs.length;
+
+            const requests = [];
+
+            // 1. Label column A — light grey background, bold, center
+            requests.push({
+                repeatCell: {
+                    range: { sheetId: sheetIdInt, startRowIndex: 0, endRowIndex: numRows, startColumnIndex: 0, endColumnIndex: 1 },
+                    cell: {
+                        userEnteredFormat: {
+                            backgroundColor: { red: 0.93, green: 0.93, blue: 0.93 },
+                            textFormat: { bold: true },
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE',
+                            wrapStrategy: 'WRAP',
+                        }
+                    },
+                    fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)'
+                }
+            });
+
+            // 2. Header row (row 0) — cyan header bar for product columns (matching white layout)
+            if (numProducts > 0) {
+                requests.push({
+                    repeatCell: {
+                        range: { sheetId: sheetIdInt, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 1, endColumnIndex: 1 + numProducts },
+                        cell: {
+                            userEnteredFormat: {
+                                backgroundColor: { red: 0.0, green: 0.9, blue: 0.9 },  // cyan
+                                textFormat: { bold: true },
+                                horizontalAlignment: 'CENTER',
+                                verticalAlignment: 'MIDDLE',
                             }
-                        ]
+                        },
+                        fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)'
                     }
                 });
             }
 
-            // 2. Prepare Rows for Appending
-            const rows = results.map(r => {
-                const d = r.data || {};
-                return [
-                    dateStr,
-                    r.asin || 'N/A',
-                    d.title || 'N/A',
-                    d.brand || 'N/A',
-                    d.price || r.price || 'N/A',
-                    d.stars || 'N/A',
-                    d.reviews || 'N/A',
-                    r.status || 'UNKNOWN',
-                    d.form || 'N/A',
-                    d.imageUrl ? `=IMAGE("${d.imageUrl}")` : 'N/A',
-                    r.originalUrl || d.originalUrl || 'N/A'
-                ];
-            });
-
-            // 3. Append Data
-            await this.sheets.spreadsheets.values.append({
-                spreadsheetId,
-                range: `${sheetTitle}!A1`,
-                valueInputOption: 'USER_ENTERED',
-                insertDataOption: 'INSERT_ROWS',
-                resource: { values: rows }
-            });
-
-            logger.info(`[SHEETS] Appended ${results.length} results to ${sheetTitle}`);
-
-            // 4. Global Row Formatting (Center Align)
-            const spreadsheet = await this.sheets.spreadsheets.get({ spreadsheetId });
-            const sheet = spreadsheet.data.sheets.find(s => s.properties.title === sheetTitle) || spreadsheet.data.sheets[0];
-            const sheetId = sheet.properties.sheetId;
-
-            await this.sheets.spreadsheets.batchUpdate({
-                spreadsheetId,
-                resource: {
-                    requests: [
-                        {
-                            repeatCell: {
-                                range: { sheetId, startColumnIndex: 0, endColumnIndex: headers.length },
-                                cell: {
-                                    userEnteredFormat: {
-                                        verticalAlignment: 'MIDDLE',
-                                        wrapStrategy: 'WRAP'
-                                    }
-                                },
-                                fields: 'userEnteredFormat(verticalAlignment,wrapStrategy)'
-                            }
-                        },
-                        // Set width for Title (Col C) and Link (Col J)
-                        { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 2, endIndex: 3 }, properties: { pixelSize: 300 }, fields: 'pixelSize' } },
-                        { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 9, endIndex: 10 }, properties: { pixelSize: 200 }, fields: 'pixelSize' } }
-                    ]
+            // 3. Image row (row index 1) — tall row height for thumbnails
+            requests.push({
+                updateDimensionProperties: {
+                    range: { sheetId: sheetIdInt, dimension: 'ROWS', startIndex: 1, endIndex: 2 },
+                    properties: { pixelSize: 150 },
+                    fields: 'pixelSize'
                 }
             });
 
-            return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${sheetId}`;
+            // 4. "Selling Price" row (index 6) — bold text in product columns
+            requests.push({
+                repeatCell: {
+                    range: { sheetId: sheetIdInt, startRowIndex: 6, endRowIndex: 7, startColumnIndex: 1, endColumnIndex: 1 + numProducts },
+                    cell: {
+                        userEnteredFormat: {
+                            textFormat: { bold: true },
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE',
+                        }
+                    },
+                    fields: 'userEnteredFormat(textFormat,horizontalAlignment,verticalAlignment)'
+                }
+            });
+
+            // 5. All data cells — center align, middle vertical, wrap, white background
+            requests.push({
+                repeatCell: {
+                    range: { sheetId: sheetIdInt, startRowIndex: 0, endRowIndex: numRows, startColumnIndex: 1, endColumnIndex: 1 + numProducts },
+                    cell: {
+                        userEnteredFormat: {
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE',
+                            wrapStrategy: 'WRAP',
+                        }
+                    },
+                    fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy)'
+                }
+            });
+
+            // 6. ASIN row (index 4) — blue hyperlink-style text
+            requests.push({
+                repeatCell: {
+                    range: { sheetId: sheetIdInt, startRowIndex: 4, endRowIndex: 5, startColumnIndex: 1, endColumnIndex: 1 + numProducts },
+                    cell: {
+                        userEnteredFormat: {
+                            textFormat: { foregroundColor: { red: 0.07, green: 0.36, blue: 0.73 }, underline: true },
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE',
+                        }
+                    },
+                    fields: 'userEnteredFormat(textFormat,horizontalAlignment,verticalAlignment)'
+                }
+            });
+
+            // 7. Title row (last row) — taller for wrapped text
+            requests.push({
+                updateDimensionProperties: {
+                    range: { sheetId: sheetIdInt, dimension: 'ROWS', startIndex: numRows - 1, endIndex: numRows },
+                    properties: { pixelSize: 180 },
+                    fields: 'pixelSize'
+                }
+            });
+
+            // 8. Column widths: A=200, product cols=160
+            requests.push({
+                updateDimensionProperties: {
+                    range: { sheetId: sheetIdInt, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 },
+                    properties: { pixelSize: 210 },
+                    fields: 'pixelSize'
+                }
+            });
+
+            if (numProducts > 0) {
+                requests.push({
+                    updateDimensionProperties: {
+                        range: { sheetId: sheetIdInt, dimension: 'COLUMNS', startIndex: 1, endIndex: 1 + numProducts },
+                        properties: { pixelSize: 160 },
+                        fields: 'pixelSize'
+                    }
+                });
+            }
+
+            // 9. Freeze the label column (A)
+            requests.push({
+                updateSheetProperties: {
+                    properties: { sheetId: sheetIdInt, gridProperties: { frozenColumnCount: 1 } },
+                    fields: 'gridProperties.frozenColumnCount'
+                }
+            });
+
+            // 10. Borders on all cells
+            requests.push({
+                updateBorders: {
+                    range: { sheetId: sheetIdInt, startRowIndex: 0, endRowIndex: numRows, startColumnIndex: 0, endColumnIndex: 1 + numProducts },
+                    top:    { style: 'SOLID', color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                    bottom: { style: 'SOLID', color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                    left:   { style: 'SOLID', color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                    right:  { style: 'SOLID', color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                    innerHorizontal: { style: 'SOLID', color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                    innerVertical:   { style: 'SOLID', color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                }
+            });
+
+            await this.sheets.spreadsheets.batchUpdate({
+                spreadsheetId,
+                resource: { requests },
+            });
+
+            logger.info(`[SHEETS] Formatting applied successfully`);
+
+            return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${sheetIdInt}`;
         } catch (error) {
             logger.error(`[SHEETS] Writing error: ${error.message}`);
             return null;
