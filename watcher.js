@@ -9,7 +9,7 @@ function startWatcher() {
     const watcher = chokidar.watch(watchFolder, {
         ignored: (path, stats) => stats?.isFile() && !path.endsWith('.csv') && !path.endsWith('.txt'),
         persistent: true,
-        ignoreInitial: false,
+        ignoreInitial: true,
         depth: 0
     });
 

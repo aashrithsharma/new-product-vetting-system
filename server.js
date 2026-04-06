@@ -1,4 +1,6 @@
+require('dotenv').config();
 const express = require('express');
+
 const path = require('path');
 const orchestrator = require('./orchestrator');
 const { parseAmazonUrl } = require('./urlParser');
@@ -124,8 +126,11 @@ app.post('/api/scrape', async (req, res) => {
             formats,
             writeToSheets,
             customSheetId: extractSheetId(req.body.customSheetId),
-            triggerSource: 'Web App'
+            triggerSource: 'Web App',
+            vettingEnabled: req.body.vettingEnabled,
+            ideaName: req.body.ideaName
         });
+
 
         // Add initial parser logs to the run
         const run = orchestrator.getRunState(runId);

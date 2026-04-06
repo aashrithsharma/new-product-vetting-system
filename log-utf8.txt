@@ -1,0 +1,35 @@
+﻿2026-03-16 18:53:31 [[32MINFO[39M]: [SCRAPER] Launching shared browser instance...
+2026-03-16 18:53:31 [[32MINFO[39M]: [SCRAPER] Scraping B003IS3HV0 on amazon.com
+2026-03-16 18:53:35 [[32MINFO[39M]: [B003IS3HV0] #productTitle found ΓÇö page loaded OK
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE] Network interception scan complete. Total relevant responses seen: 0
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE] Intercepted price from network: null (none found)
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PAGE-SUMMARY] title="Amazon.com: Leather Honey Leather Conditioner, Since 1968. for All Leather Items Including Auto, Furniture, Shoes, Purses and Tack. Non-Toxic and Made in The USA / 8 Fl Oz (Pack of 1) : Sports & Outdoors" url="https://www.amazon.com/dp/B003IS3HV0?th=1&language=en_US&currency=USD&gl=US"
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PAGE-SUMMARY] bodyLen=2398365 productTitle=true buyBox=true
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PAGE-SUMMARY] corePrice=false apexOffer=false priceInsideBuybox=false
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PAGE-SUMMARY] all .a-offscreen: ["Lexol All Leather Conditioner for Car Seats and Interiors, Couches and Furniture, Shoes and Boots, Bags and Jackets, Baseball Gloves and Horse Saddles, and More, 16.9 oz Bottle (Step 2 of 2)","Lexol All Leather Conditioner, Naturally Derived Leather Conditioner with Bee and Carnauba Milk, Great for Car Interiors, Boots, Furniture, Bags, Jackets and More, 16.9 fl oz","This product is from a small business brand. Support small.    \n                 Learn more","INR┬á2,063.78","INR┬á64.16","List: INR┬á2,292.66","INR┬á2,292.66","INR┬á1,722.85","INR┬á101.51","INR901.61","INR┬á2,063.78","INR┬á64.16","List: INR┬á2,292.66","INR┬á2,292.66"]
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE] Network scan complete. Relevant responses seen: 0. Intercepted: none
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE] Step 1: Trying JSON/meta USD extraction...
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [JSON-PRICE] No USD price found in page JSON/meta
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE] Step 2: JSON failed. Running DOM extraction...
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE] Container presence check:
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE]   Γ£ÿ #corePriceDisplay_desktop_feature_div
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE]   Γ£ÿ #apex_offerDisplay_desktop
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE]   Γ£ÿ #corePrice_feature_div
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE]   Γ£ÿ #buyNewSection
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE]   Γ£ÿ #price_inside_buybox
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE] offscreen values BEFORE wait (14 found): ["Lexol All Leather Conditioner for Car Seats and Interiors, Couches and Furniture, Shoes and Boots, Bags and Jackets, Baseball Gloves and Horse Saddles, and More, 16.9 oz Bottle (Step 2 of 2)","Lexol All Leather Conditioner, Naturally Derived Leather Conditioner with Bee and Carnauba Milk, Great for Car Interiors, Boots, Furniture, Bags, Jackets and More, 16.9 fl oz","This product is from a small business brand. Support small.    \n                 Learn more","INR┬á2,063.78","INR┬á64.16","List: INR┬á2,292.66","INR┬á2,292.66","INR┬á1,722.85","INR┬á101.51","INR901.61"]
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE] waitForFunction ΓåÆ resolved (price element found in DOM)
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE] offscreen values AFTER wait (14 found): ["Lexol All Leather Conditioner for Car Seats and Interiors, Couches and Furniture, Shoes and Boots, Bags and Jackets, Baseball Gloves and Horse Saddles, and More, 16.9 oz Bottle (Step 2 of 2)","Lexol All Leather Conditioner, Naturally Derived Leather Conditioner with Bee and Carnauba Milk, Great for Car Interiors, Boots, Furniture, Bags, Jackets and More, 16.9 fl oz","This product is from a small business brand. Support small.    \n                 Learn more","INR┬á2,063.78","INR┬á64.16","List: INR┬á2,292.66","INR┬á2,292.66","INR┬á1,722.85","INR┬á101.51","INR901.61"]
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE] DOM evaluation method used: AL-ACCESS-LABEL
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE]   [AL] .a-offscreen: "INR┬á2,063.78"
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE] DOM price found via Method AL-ACCESS-LABEL: "INR┬á2,063.78"
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE] DOM gave non-USD price: INR┬á2,063.78 ΓÇö holding for last-resort convert
+2026-03-16 18:53:37 [[33MWARN[39M]: [B003IS3HV0] [PRICE] Last resort: converting DOM price INR┬á2,063.78 via exchange rate
+2026-03-16 18:53:37 [[32MINFO[39M]: [PRICE-CONV] Γé╣2063.78 ├╖ 90 = $22.93
+2026-03-16 18:53:37 [[33MWARN[39M]: [B003IS3HV0] [PRICE] ΓÜá Exchange-rate conversion result: $22.93 (may differ from actual US price)
+2026-03-16 18:53:37 [[32MINFO[39M]: [B003IS3HV0] [PRICE] ΓòÉΓòÉ FINAL RESOLVED PRICE: $22.93 ΓòÉΓòÉ
+2026-03-16 18:53:38 [[33MWARN[39M]: [B003IS3HV0] ScraperAPI failed: Unexpected token 'U', "Unauthoriz"... is not valid JSON
+2026-03-16 18:53:38 [[32MINFO[39M]: [B003IS3HV0] PRICE DEBUG: INR=true USD=true
+2026-03-16 18:53:38 [[32MINFO[39M]: [B003IS3HV0] Using live DOM price
+Done. Saved to result.json
+2026-03-16 18:53:38 [[32MINFO[39M]: [SCRAPER] Closing shared browser instance...

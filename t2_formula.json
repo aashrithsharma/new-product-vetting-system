@@ -1,0 +1,14 @@
+[
+  "=25 * 182.5",
+  "Idea",
+  "=SUMIF($H$32:$H$132, \"Most Likely Scenario\", $F$32:$F$132)",
+  0.025,
+  "=IF(COUNTIF($I$20, \"Regular Price\")>0, SUMIF($I$20, \"Regular Price\", $H$20), 0.35)",
+  "=C25 * 0.2",
+  "=A25 * A20",
+  "=IF(C25>=2500000, \"Homerun\", IF(C25>=1500000, \"Triple\", IF(C25>=750000, \"Double\", IF(C25>=250000, \"Single\", \"Less Than a Single\"))))",
+  60,
+  "=IF(G25>0, (L25/G25)*100, 0)",
+  "=(E25*(1-D25)) - 0.2",
+  "=C25 * K25"
+]

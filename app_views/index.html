@@ -679,6 +679,32 @@
                 <input type="checkbox" id="sheetsToggle" checked style="width: 40px; height: 20px; cursor: pointer;" onchange="toggleSheetPanel(this.checked)">
             </div>
 
+            <div class="toggle-section" style="border-top: none; margin-top: 0; padding-top: 10px;">
+                <div class="toggle-text">
+                    <label>Enable AI Vetting (Claude 3.5)</label>
+                    <p class="helper-text">Competitor analysis & financial modeling powered by AI.</p>
+                </div>
+                <input type="checkbox" id="vettingToggle" checked style="width: 40px; height: 20px; cursor: pointer;" onchange="toggleVettingPanel(this.checked)">
+            </div>
+
+            <div id="vettingPanel" class="sheet-input-card" style="display: block; background: #eff6ff; border-color: #bfdbfe;">
+                <div class="sheet-card-header">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                    <span class="sheet-card-title" style="color: #1e40af;">AI Research Parameters</span>
+                </div>
+                <p class="sheet-card-hint" style="color: #1e40af;">
+                    What product category is this? Claude will use this to find the target price.
+                </p>
+                <div class="sheet-input-wrapper">
+                    <input
+                        type="text"
+                        id="ideaName"
+                        placeholder="e.g., Pool Test Kits"
+                        style="border-color: #93c5fd;"
+                    >
+                </div>
+            </div>
+
             <!-- Google Sheet panel -->
             <div id="customSheetWrapper" class="sheet-input-card">
                 <div class="sheet-card-header">
@@ -764,6 +790,8 @@
                 <button id="dlXlsx" class="download-btn">⬇ Download Excel (.xlsx)</button>
                 <button id="openSheet" class="download-btn sheet-btn hidden">📊 Open Google Sheet</button>
             </div>
+                </div>
+            </div>
 
             <button id="cancelBtn" class="secondary-btn" onclick="confirmCancel()"
                 style="color: var(--error); margin-top: 30px;">Cancel Run</button>
@@ -790,6 +818,12 @@
                 wrapper.style.display = 'none';
             }
         }
+
+        function toggleVettingPanel(show) {
+            const wrapper = document.getElementById('vettingPanel');
+            wrapper.style.display = show ? 'block' : 'none';
+        }
+
 
         function extractSheetIdFromUrl(val) {
             if (!val) return null;
@@ -952,8 +986,11 @@
                 formats,
                 writeToSheets,
                 customSheetId: document.getElementById('customSheetId').value.trim(),
+                vettingEnabled: document.getElementById('vettingToggle').checked,
+                ideaName: document.getElementById('ideaName').value.trim() || 'New Product Idea',
                 triggerSource: 'frontend'
             };
+
 
             console.log('Sending Payload:', JSON.stringify(payload));
 
@@ -1111,6 +1148,7 @@
                 os.onclick = () => window.open(data.sheetLink, '_blank');
             }
         }
+
 
         function confirmCancel() {
             if (confirm("Are you sure you want to cancel? Partially scraped results will be lost.")) {

@@ -10,11 +10,10 @@ async function test() {
     try {
         const res = await axios.get(url, { timeout: 60000 });
         console.log("Status:", res.status);
-        console.log("Price Data:", JSON.stringify({
-            pricing: res.data.pricing,
-            price: res.data.price,
-            buybox_price: res.data.buybox_price
-        }, null, 2));
+        console.log("Keys available:", Object.keys(res.data));
+        console.log("Name:", res.data.name);
+        console.log("Title:", res.data.title);
+        console.log("Product Name:", res.data.product_name);
     } catch (e) {
         console.error("Error:", e.message);
     }

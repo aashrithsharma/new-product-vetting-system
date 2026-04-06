@@ -7,6 +7,8 @@
         "node": ">=18"
     },
     "dependencies": {
+        "@anthropic-ai/sdk": "^0.80.0",
+        "@google/generative-ai": "^0.24.1",
         "axios": "^1.5.1",
         "cheerio": "^1.0.0-rc.12",
         "chokidar": "^3.5.3",

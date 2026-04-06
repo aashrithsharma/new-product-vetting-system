@@ -18,7 +18,7 @@ console.error = console.log;
 async function runTest() {
     try {
         await scraper.init();
-        const result = await scraper.scrapeASIN('B0DX24WXHJ', () => {});
+        const result = await scraper.scrapeASIN('B0GQVPPGGK', () => {});
         fs.writeFileSync('result.json', JSON.stringify(result, null, 2), 'utf8');
         logFile.write("Done. Saved to result.json\n");
     } catch (e) {

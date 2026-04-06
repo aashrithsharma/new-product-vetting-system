@@ -7,6 +7,9 @@ const config = require('./config');
 const { delay } = require('./utils');
 const urlParser = require('./urlParser');
 const axios = require('axios');
+const vettingEngine = require('./vettingEngine');
+const path = require('path');
+
 
 async function fetchLiveExchangeRate() {
     try {
@@ -31,10 +34,11 @@ class Orchestrator {
         this.currentRunId = null;
     }
 
-    async startRun({ products, formats, writeToSheets, triggerSource, customSheetId }) {
+    async startRun({ products, formats, writeToSheets, triggerSource, customSheetId, vettingEnabled, ideaName }) {
         if (this.currentRunId && this.runs.get(this.currentRunId).status === 'running') {
             throw new Error('A scrape is already in progress.');
         }
+
 
         const runId = Date.now().toString();
         const runState = {
@@ -53,8 +57,12 @@ class Orchestrator {
             customSheetId, // Store the custom sheet ID
             triggerSource,
             results: [],
-            outputs: {}
+            outputs: {},
+            vettingEnabled: vettingEnabled !== false,
+            ideaName: ideaName || 'New Product Idea',
+            originalInputCount: products.length  // Track original input count for single-ASIN detection
         };
+
 
         this.runs.set(runId, runState);
         this.currentRunId = runId;
@@ -178,33 +186,169 @@ class Orchestrator {
 
             // 3. Finalization
             if (run.status !== 'cancelled') {
-                run.status = 'complete';
-                this.addLog(runId, 'INFO', 'Run complete. Finalizing...');
+                this.addLog(runId, 'INFO', 'Finalizing run: Starting intelligent data enrichment...');
 
-                if (run.writeToSheets) {
-                    await sheets.init(run.customSheetId);
-                    run.sheetLink = await sheets.writeResults(run.results, run.customSheetId);
+                const primary = run.results.find(r => r.status === 'SUCCESS');
+                
+                // --- 1. INTELLIGENT AUTO-DISCOVERY OF COMPETITORS ---
+                // Triggers when user submitted only 1 ASIN — system finds 5 direct competitors
+                const originalInputCount = run.originalInputCount || run.results.length;
+                if (run.vettingEnabled && run.succeededAsins > 0 && originalInputCount <= 1 && primary && primary.data) {
+                    this.addLog(runId, 'INFO', `Single-ASIN mode: Auto-discovering up to 6 direct competitors for "${primary.data.title}"...`);
+                    try {
+                        const apiKey = process.env.SCRAPERAPI_KEY;
+                        if (apiKey) {
+                            // Generate a targeted search query using Claude
+                            const optimizedQuery = await vettingEngine.generateSearchQuery(primary.data);
+                            this.addLog(runId, 'INFO', `Competitor search query: "${optimizedQuery}"`);
+
+                            // Search Amazon for competitors with robust retries
+                            let searchResults = [];
+                            let searchAttempts = 0;
+                            const maxSearchAttempts = 3;
+
+                            let activeQuery = optimizedQuery;
+                            while (searchAttempts < maxSearchAttempts && searchResults.length === 0) {
+                                searchAttempts++;
+                                try {
+                                    this.addLog(runId, 'INFO', `Searching for competitors (Attempt ${searchAttempts}/${maxSearchAttempts}) with query: "${activeQuery}"`);
+                                    const searchUrl = `https://api.scraperapi.com/structured/amazon/search?api_key=${apiKey}&query=${encodeURIComponent(activeQuery)}&country=us`;
+                                    const searchRes = await axios.get(searchUrl, { timeout: 60000 });
+                                    if (searchRes.status === 200 && searchRes.data?.results && searchRes.data.results.length > 0) {
+                                        searchResults = searchRes.data.results;
+                                        break;
+                                    }
+                                } catch (eSearch) {
+                                    this.addLog(runId, 'WARN', `Search attempt ${searchAttempts} failed: ${eSearch.message}`);
+                                    if (searchAttempts < maxSearchAttempts) {
+                                        await delay(3000);
+                                        // On last attempt (or if first failed with empty), try a broader fallback query
+                                        if (searchAttempts === 1 || searchAttempts === maxSearchAttempts - 1) {
+                                            activeQuery = `${primary.data.category?.split('>').pop() || ''} ${primary.data.title?.split(' ').slice(0, 3).join(' ')}`.trim();
+                                            this.addLog(runId, 'INFO', `Switching to safe fallback query for next attempt: "${activeQuery}"`);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // If first search returns too few, try a broader search IF we haven't already tried a retry
+                            if (searchResults.length < 5) {
+                                const broaderQuery = `${primary.data.category?.split('>').pop() || ''} ${primary.data.title?.split(' ').slice(0, 3).join(' ')}`.trim();
+                                this.addLog(runId, 'INFO', `Found only ${searchResults.length} results. Trying broader backup search: "${broaderQuery}"`);
+                                try {
+                                    const broaderUrl = `https://api.scraperapi.com/structured/amazon/search?api_key=${apiKey}&query=${encodeURIComponent(broaderQuery)}&country=us`;
+                                    const broaderRes = await axios.get(broaderUrl, { timeout: 45000 });
+                                    if (broaderRes.status === 200 && broaderRes.data?.results) {
+                                        searchResults = [...searchResults, ...broaderRes.data.results];
+                                    }
+                                } catch (e2) { /* ignore broader search failure */ }
+                            }
+
+                            // Pre-filter by price proximity (within ±70% of input price) - loosened to avoid total failure
+                            const inputPrice = parseFloat(String(primary.data.price).replace(/[^0-9.]/g, '')) || 0;
+                            let candidates = searchResults.filter(r => r.asin && r.asin !== primary.data.asin);
+                            
+                            if (inputPrice > 0) {
+                                const priceFiltered = candidates.filter(r => {
+                                    const p = parseFloat(String(r.price).replace(/[^0-9.]/g, '')) || 0;
+                                    return p > 0 && p >= inputPrice * 0.3 && p <= inputPrice * 3.0; // Loosened from 0.4-1.6 to 0.3-3.0
+                                });
+                                // Only use filtered results if we still have at least 3, otherwise stick to original candidates
+                                if (priceFiltered.length >= 3) {
+                                    candidates = priceFiltered;
+                                }
+                            }
+
+                            this.addLog(runId, 'INFO', `${candidates.length} candidates available for selection. Sending to Claude...`);
+
+                            if (candidates.length > 0) {
+                                // Claude picks the top 5 most direct competitors
+                                const bestComps = await vettingEngine.selectTopCompetitors(primary.data, candidates.slice(0, 20));
+                                this.addLog(runId, 'INFO', `Claude selected ${bestComps.length} direct competitors.`);
+
+                                let discovered = 0;
+                                for (const comp of bestComps) {
+                                    if (discovered >= 6) break; // Find up to 6 to be safe
+                                    if (run.results.some(r => r.asin === comp.asin)) continue;
+
+                                    this.addLog(runId, 'INFO', `Scraping competitor [${discovered + 1}/6]: ${comp.asin}`);
+                                    const compResult = await scraper.scrapeASIN({ asin: comp.asin, domain: primary.domain || 'amazon.com' });
+
+                                    if (compResult.status === 'SUCCESS') {
+                                        run.results.push(compResult);
+                                        run.succeededAsins++;
+                                        this.addLog(runId, 'CHECK', `[DISCOVERED] ${comp.asin} — $${compResult.data.price} — ${compResult.data.brand || 'N/A'}`);
+                                        discovered++;
+                                    } else {
+                                        // Use search-result data as fallback so it still appears in the comparison
+                                        run.results.push({
+                                            asin: comp.asin,
+                                            status: 'SUCCESS',
+                                            data: {
+                                                asin: comp.asin,
+                                                title: comp.name || comp.title || 'N/A',
+                                                brand: comp.brand || 'Found Competitor',
+                                                price: comp.price || 'N/A',
+                                                reviews: comp.total_reviews ? String(comp.total_reviews) : 'N/A',
+                                                stars: comp.stars ? String(comp.stars) : 'N/A',
+                                                imageUrl: comp.image || '',
+                                                boughtPastMonth: comp.sales_volume || 'N/A',
+                                                url: `https://www.amazon.com/dp/${comp.asin}`
+                                            }
+                                        });
+                                        run.succeededAsins++;
+                                        this.addLog(runId, 'WARN', `Full scrape failed for ${comp.asin} — using search data as fallback.`);
+                                        discovered++;
+                                    }
+                                }
+                                this.addLog(runId, 'INFO', `Competitor discovery complete: found ${discovered} competitors. Total products for analysis: ${run.results.filter(r => r.status === 'SUCCESS').length}`);
+                            } else {
+                                this.addLog(runId, 'WARN', 'No suitable competitor candidates found in search results.');
+                            }
+                        }
+                    } catch (e) {
+                        this.addLog(runId, 'WARN', `Intelligent discovery failed: ${e.message}`);
+                    }
                 }
 
-                run.outputs = await exporter.generateOutputs(run.results, runId);
-                run.isComplete = true;
+                // --- 2. AI VETTING PASS ---
+                if (run.vettingEnabled && run.succeededAsins > 0) {
+                    const successResults = run.results.filter(r => r.status === 'SUCCESS');
+                    try {
+                        if (run.ideaName === 'New Product Idea' && successResults[0]?.data?.category && successResults[0].data.category !== 'N/A') {
+                            run.ideaName = successResults[0].data.category;
+                        }
+                        this.addLog(runId, 'INFO', `Starting AI Vetting analysis for category: ${run.ideaName}`);
+                        run.vettingResults = await vettingEngine.analyzeIdea(run.ideaName, successResults);
+                        if (run.vettingResults) {
+                            this.addLog(runId, 'CHECK', `AI Vetting Complete: Target Price set at ${run.vettingResults.analysis.targetPrice}`);
+                        }
+                    } catch (vetErr) {
+                        this.addLog(runId, 'ERROR', `AI Vetting failed: ${vetErr.message}. Falling back to local financial modeling.`);
+                        const price = successResults[0]?.data?.price || 29.99;
+                        run.vettingResults = vettingEngine.runLocalModelingFallback(run.ideaName, price);
+                        this.addLog(runId, 'INFO', `Local fallback modeling complete. Price: $${price}`);
+                    }
+                }
 
-                const duration = (Date.now() - startTime) / 60000;
-                /*
-                await notifier.sendNotification({
-                    status: 'complete',
-                    trigger: run.triggerSource,
-                    total: run.totalAsins,
-                    success: run.succeededAsins,
-                    failed: run.failedAsins,
-                    blocked: run.blockedAsins,
-                    duration,
-                    sheetLink: run.sheetLink,
-                    failedAsins: run.results.filter(r => r.status !== 'SUCCESS').map(r => ({ asin: r.asin, reason: r.reason }))
-                });
-                */
-                logger.info('[ORCHESTRATOR] Run summary notification skipped (Slack disabled)');
+                // --- 3. EXPORT GENERATION (After all results added) ---
+                run.outputs = await exporter.generateOutputs(run.results, path.join(__dirname, 'outputs'), run.vettingResults, run.ideaName);
+
+                // --- 4. SHEET WRITING ---
+                if (run.writeToSheets) {
+                    const successResults = run.results.filter(r => r.status === 'SUCCESS');
+                    if (successResults.length > 0) {
+                        this.addLog(runId, 'INFO', `Writing ${successResults.length} results to a single Google Sheet...`);
+                        run.sheetLink = await sheets.writeResults(successResults, run.customSheetId, run.vettingResults, run.ideaName);
+                        this.addLog(runId, 'INFO', `Sheet Writing complete. Link: ${run.sheetLink}`);
+                    }
+                }
+
+                run.status = 'complete';
+                run.isComplete = true;
+                logger.info(`[RUN:${runId}] All finalizing blocks finished successfully.`);
             }
+
 
         } catch (error) {
             logger.error(`[ORCHESTRATOR] Fatal error: ${error.message}`);
@@ -275,6 +419,8 @@ class Orchestrator {
                 products,
                 formats: ['csv', 'xlsx'],
                 writeToSheets: true,
+                vettingEnabled: true,
+                ideaName: fileName.replace(/\.[^/.]+$/, "").replace(/_/g, " "),
                 triggerSource
             });
         } catch (error) {

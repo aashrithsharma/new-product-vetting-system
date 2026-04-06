@@ -1,0 +1,149 @@
+2026-04-01 16:14:35 [WARN]: [B0009PCPNQ] Error fetching HTML: read ECONNRESET
+2026-04-01 16:14:39 [WARN]: [B0009PCPNQ] Error fetching HTML: Request failed with status code 400
+2026-04-01 16:14:44 [INFO]: [B0009PCPNQ] ScraperAPI-Structured JSON retrieved successfully.
+2026-04-01 16:14:44 [INFO]: [B0009PCPNQ] HTML fetch failed, fallback to structured JSON.
+2026-04-01 16:14:44 [INFO]: [RUN:1775040196087] CHECK: [DISCOVERED] B0009PCPNQ — $$4.47 — Brand: Tuff Stuff
+2026-04-01 16:14:44 [INFO]: [RUN:1775040196087] INFO: Scraping competitor [2/5]: B07R5QGGJG
+2026-04-01 16:14:44 [INFO]: [SCRAPER] Scraping B07R5QGGJG on undefined
+2026-04-01 16:14:44 [WARN]: [B07R5QGGJG] Error fetching HTML: Request failed with status code 400
+2026-04-01 16:14:46 [WARN]: [B07R5QGGJG] Error fetching HTML: Request failed with status code 400
+2026-04-01 16:14:47 [INFO]: [B07R5QGGJG] ScraperAPI-Structured JSON retrieved successfully.
+2026-04-01 16:14:50 [WARN]: [B07R5QGGJG] Error fetching HTML: Request failed with status code 400
+2026-04-01 16:14:50 [INFO]: [B07R5QGGJG] HTML fetch failed, fallback to structured JSON.
+2026-04-01 16:14:50 [INFO]: [RUN:1775040196087] CHECK: [DISCOVERED] B07R5QGGJG — $$8.84 — Visit the Meguiar's Store
+2026-04-01 16:14:50 [INFO]: [RUN:1775040196087] INFO: Scraping competitor [3/5]: B00G49DUJY
+2026-04-01 16:14:50 [INFO]: [SCRAPER] Scraping B00G49DUJY on undefined
+2026-04-01 16:14:51 [WARN]: [B00G49DUJY] Error fetching HTML: Request failed with status code 400
+2026-04-01 16:14:53 [WARN]: [B00G49DUJY] Error fetching HTML: Request failed with status code 400
+2026-04-01 16:14:57 [WARN]: [B00G49DUJY] Error fetching HTML: Request failed with status code 400
+2026-04-01 16:14:58 [INFO]: [B00G49DUJY] ScraperAPI-Structured JSON retrieved successfully.
+2026-04-01 16:14:58 [INFO]: [B00G49DUJY] HTML fetch failed, fallback to structured JSON.
+2026-04-01 16:14:58 [INFO]: [RUN:1775040196087] CHECK: [DISCOVERED] B00G49DUJY — $$8.00 — Visit the Meguiar's Store
+2026-04-01 16:14:58 [INFO]: [RUN:1775040196087] INFO: Scraping competitor [4/5]: B09W22MDG1
+2026-04-01 16:14:58 [INFO]: [SCRAPER] Scraping B09W22MDG1 on undefined
+2026-04-01 16:14:59 [WARN]: [B09W22MDG1] Error fetching HTML: Request failed with status code 400
+2026-04-01 16:15:01 [INFO]: [B09W22MDG1] ScraperAPI-Structured JSON retrieved successfully.
+2026-04-01 16:15:01 [WARN]: [B09W22MDG1] Error fetching HTML: Request failed with status code 400
+2026-04-01 16:15:05 [WARN]: [B09W22MDG1] Error fetching HTML: Request failed with status code 400
+2026-04-01 16:15:05 [INFO]: [B09W22MDG1] HTML fetch failed, fallback to structured JSON.
+2026-04-01 16:15:05 [INFO]: [RUN:1775040196087] CHECK: [DISCOVERED] B09W22MDG1 — $$7.99 — Brand: AQISI
+2026-04-01 16:15:05 [INFO]: [RUN:1775040196087] INFO: Scraping competitor [5/5]: B0CLY3HWKC
+2026-04-01 16:15:05 [INFO]: [SCRAPER] Scraping B0CLY3HWKC on undefined
+2026-04-01 16:15:05 [WARN]: [B0CLY3HWKC] Error fetching HTML: Request failed with status code 400
+2026-04-01 16:15:08 [WARN]: [B0CLY3HWKC] Error fetching HTML: Request failed with status code 400
+2026-04-01 16:15:12 [WARN]: [B0CLY3HWKC] Error fetching HTML: Request failed with status code 400
+2026-04-01 16:15:23 [INFO]: [B0CLY3HWKC] ScraperAPI-Structured JSON retrieved successfully.
+2026-04-01 16:15:23 [INFO]: [B0CLY3HWKC] HTML fetch failed, fallback to structured JSON.
+2026-04-01 16:15:23 [INFO]: [RUN:1775040196087] CHECK: [DISCOVERED] B0CLY3HWKC — $$8.49 — Visit the Meguiar's Store
+2026-04-01 16:15:23 [INFO]: [RUN:1775040196087] INFO: Competitor discovery complete: found 5 competitors. Total products for analysis: 6
+2026-04-01 16:15:23 [INFO]: [RUN:1775040196087] INFO: Starting AI Vetting analysis for category: Automotive > Car Care > Exterior Care > Car Wash Equipment > Cleaners
+2026-04-01 16:15:23 [INFO]: [VETTING] Starting intelligence analysis for: Automotive > Car Care > Exterior Care > Car Wash Equipment > Cleaners
+2026-04-01 16:15:23 [INFO]: [VETTING] Calling Claude with model: claude-sonnet-4-20250514 (Attempt 1)
+2026-04-01 16:15:36 [INFO]: [VETTING] Successfully analyzed Automotive > Car Care > Exterior Care > Car Wash Equipment > Cleaners. MostLikely: 18/day, BestCase: 45/day
+2026-04-01 16:15:36 [INFO]: [RUN:1775040196087] CHECK: AI Vetting Complete: Target Price set at 12.99
+2026-04-01 16:15:36 [INFO]: [EXPORTER] CSV generated (Vertical): outputs\competitor-research-2026-04-01-1615.csv
+2026-04-01 16:15:37 [INFO]: [EXPORTER] Excel generated (Vertical + Images): outputs\competitor-research-2026-04-01-1615.xlsx
+2026-04-01 16:15:37 [INFO]: [RUN:1775040196087] INFO: Writing 6 results to a single Google Sheet...
+2026-04-01 16:15:37 [INFO]: [SHEETS] Google Sheets API initialized for Sheet: 1GcwwlNJx8gYQBfWKMX9EFyrJG6Kyh4Kf8EmL_KO3ky4
+2026-04-01 16:15:38 [INFO]: [SHEETS] Created new target tab: Automotive > Car Care > Exterior Care > Car Wash Equipment > Cleaners - 1615
+2026-04-01 16:15:39 [INFO]: [SHEETS] Final Write — Total Rows: 86, T3 mostLikely rows: [68,69], bestCase rows: [85]
+2026-04-01 16:15:40 [INFO]: [SHEETS] Layout complete: Comparison + Brief + Table 1 + Table 2 + Table 3 (Volume Scenarios).
+2026-04-01 16:15:40 [INFO]: [RUN:1775040196087] INFO: Sheet Writing complete. Link: https://docs.google.com/spreadsheets/d/1GcwwlNJx8gYQBfWKMX9EFyrJG6Kyh4Kf8EmL_KO3ky4/edit#gid=8854824
+2026-04-01 16:15:40 [INFO]: [RUN:1775040196087] All finalizing blocks finished successfully.
+2026-04-01 16:28:44 [INFO]: ==========================================
+2026-04-01 16:28:44 [INFO]:    Amazon Competitor Intelligence System   
+2026-04-01 16:28:44 [INFO]: ==========================================
+2026-04-01 16:28:44 [INFO]: [SERVER] Running at http://localhost:3000
+2026-04-01 16:28:44 [INFO]: [SCHEDULER] Registering daily job: 0 7 * * * [America/New_York]
+2026-04-01 16:28:44 [INFO]: [SYSTEM] All systems operational. Waiting for triggers...
+2026-04-01 16:30:00 [INFO]: [SCHEDULER] Triggering 7 AM daily scrape...
+2026-04-01 16:30:00 [INFO]: [PARSER] parseInput received: "B09XJ4XQMB"
+2026-04-01 16:30:00 [INFO]: [PARSER] Request to extract ASIN from: "B09XJ4XQMB"
+2026-04-01 16:30:00 [INFO]: [PARSER] Found via raw match: B09XJ4XQMB
+2026-04-01 16:30:00 [INFO]: [PARSER] Success: {"asin":"B09XJ4XQMB","domain":"amazon.com","originalUrl":"B09XJ4XQMB"}
+2026-04-01 16:30:00 [INFO]: [PARSER] parseInput received: "B08N5WRWNW"
+2026-04-01 16:30:00 [INFO]: [PARSER] Request to extract ASIN from: "B08N5WRWNW"
+2026-04-01 16:30:00 [INFO]: [PARSER] Found via raw match: B08N5WRWNW
+2026-04-01 16:30:00 [INFO]: [PARSER] Success: {"asin":"B08N5WRWNW","domain":"amazon.com","originalUrl":"B08N5WRWNW"}
+2026-04-01 16:30:00 [INFO]: [PARSER] parseInput received: "B07FNH3G2K"
+2026-04-01 16:30:00 [INFO]: [PARSER] Request to extract ASIN from: "B07FNH3G2K"
+2026-04-01 16:30:00 [INFO]: [PARSER] Found via raw match: B07FNH3G2K
+2026-04-01 16:30:00 [INFO]: [PARSER] Success: {"asin":"B07FNH3G2K","domain":"amazon.com","originalUrl":"B07FNH3G2K"}
+2026-04-01 16:30:00 [INFO]: [SCHEDULER] Starting scheduled run with 3 products
+2026-04-01 16:30:01 [INFO]: [ORCHESTRATOR] Live exchange rate fetched: 1 USD = 93.857751 INR
+2026-04-01 16:30:01 [INFO]: [RUN:1775041200932] INFO: Live exchange rate: 1 USD = 93.86 INR
+2026-04-01 16:30:01 [INFO]: [RUN:1775041200932] INFO: Persistent browser launched. Starting optimized run.
+2026-04-01 16:30:01 [INFO]: [RUN:1775041200932] INFO: Starting Initial Pass with concurrency: 5
+2026-04-01 16:30:01 [INFO]: [RUN:1775041200932] INFO: Scraping: B09XJ4XQMB
+2026-04-01 16:30:01 [INFO]: [SCRAPER] Scraping B09XJ4XQMB on amazon.com
+2026-04-01 16:30:03 [INFO]: [RUN:1775041200932] INFO: Scraping: B08N5WRWNW
+2026-04-01 16:30:03 [INFO]: [SCRAPER] Scraping B08N5WRWNW on amazon.com
+2026-04-01 16:30:05 [INFO]: [RUN:1775041200932] INFO: Scraping: B07FNH3G2K
+2026-04-01 16:30:05 [INFO]: [SCRAPER] Scraping B07FNH3G2K on amazon.com
+2026-04-01 16:30:06 [WARN]: [B08N5WRWNW] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:30:07 [WARN]: [B07FNH3G2K] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:30:11 [WARN]: [B08N5WRWNW] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:30:16 [WARN]: [B09XJ4XQMB] Error fetching HTML: read ECONNRESET
+2026-04-01 16:30:19 [WARN]: [B07FNH3G2K] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:30:19 [WARN]: [B08N5WRWNW] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:30:21 [INFO]: [RUN:1775041200932] ERROR: [ASIN 1/3] B08N5WRWNW — FAILED (Will retry)
+2026-04-01 16:30:22 [WARN]: [B09XJ4XQMB] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:30:28 [WARN]: [B09XJ4XQMB] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:30:28 [INFO]: [RUN:1775041200932] ERROR: [ASIN 2/3] B09XJ4XQMB — FAILED (Will retry)
+2026-04-01 16:30:56 [WARN]: [B07FNH3G2K] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:30:56 [INFO]: [RUN:1775041200932] ERROR: [ASIN 3/3] B07FNH3G2K — FAILED (Will retry)
+2026-04-01 16:30:56 [INFO]: [RUN:1775041200932] INFO: Starting Second Chance pass for 3 failed items...
+2026-04-01 16:30:56 [INFO]: [RUN:1775041200932] INFO: Retrying: B08N5WRWNW
+2026-04-01 16:30:56 [INFO]: [SCRAPER] Scraping B08N5WRWNW on amazon.com
+2026-04-01 16:30:57 [INFO]: [RUN:1775041200932] INFO: Retrying: B09XJ4XQMB
+2026-04-01 16:30:57 [INFO]: [SCRAPER] Scraping B09XJ4XQMB on amazon.com
+2026-04-01 16:30:59 [WARN]: [B09XJ4XQMB] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:31:03 [WARN]: [B08N5WRWNW] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:31:04 [WARN]: [B09XJ4XQMB] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:31:08 [WARN]: [B08N5WRWNW] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:31:10 [WARN]: [B09XJ4XQMB] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:31:10 [INFO]: [RUN:1775041200932] ERROR: [RETRY FAILED] B09XJ4XQMB — FAILED
+2026-04-01 16:31:10 [INFO]: [RUN:1775041200932] INFO: Retrying: B07FNH3G2K
+2026-04-01 16:31:10 [INFO]: [SCRAPER] Scraping B07FNH3G2K on amazon.com
+2026-04-01 16:31:11 [WARN]: [B07FNH3G2K] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:31:15 [WARN]: [B08N5WRWNW] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:31:15 [INFO]: [RUN:1775041200932] ERROR: [RETRY FAILED] B08N5WRWNW — FAILED
+2026-04-01 16:31:29 [WARN]: [B07FNH3G2K] Error fetching HTML: read ECONNRESET
+2026-04-01 16:31:34 [WARN]: [B07FNH3G2K] Error fetching HTML: Request failed with status code 404
+2026-04-01 16:31:34 [INFO]: [RUN:1775041200932] ERROR: [RETRY FAILED] B07FNH3G2K — FAILED
+2026-04-01 16:31:34 [INFO]: [RUN:1775041200932] INFO: Finalizing run: Starting intelligent data enrichment...
+2026-04-01 16:31:34 [INFO]: [EXPORTER] CSV generated (Vertical): outputs\competitor-research-2026-04-01-1631.csv
+2026-04-01 16:31:34 [INFO]: [EXPORTER] Excel generated (Vertical + Images): outputs\competitor-research-2026-04-01-1631.xlsx
+2026-04-01 16:31:34 [INFO]: [RUN:1775041200932] All finalizing blocks finished successfully.
+2026-04-01 16:33:51 [INFO]: [SHEETS] Google Sheets API initialized for Sheet: 1NEpxeAVVtxLpDqD9kReqMM0wZBn-6Q2isgRziUAWkDg
+2026-04-01 16:33:53 [ERROR]: [SHEETS] Writing error in writeResults: The caller does not have permission
+Stack: Error: The caller does not have permission
+    at Gaxios._request (C:\Users\Aashrith\Documents\scrapper-amazon\node_modules\gaxios\build\src\gaxios.js:142:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (C:\Users\Aashrith\Documents\scrapper-amazon\node_modules\google-auth-library\build\src\auth\oauth2client.js:429:18)
+    at async SheetsService.writeResults (C:\Users\Aashrith\Documents\scrapper-amazon\sheets.js:54:36)
+    at async test (C:\Users\Aashrith\Documents\scrapper-amazon\test_sheets_debug.js:25:22)
+2026-04-01 16:34:35 [INFO]: [SHEETS] Google Sheets API initialized for Sheet: 1NEpxeAVVtxLpDqD9kReqMM0wZBn-6Q2isgRziUAWkDg
+2026-04-01 16:34:37 [ERROR]: [SHEETS] Writing error in writeResults: The caller does not have permission
+Stack: Error: The caller does not have permission
+    at Gaxios._request (C:\Users\Aashrith\Documents\scrapper-amazon\node_modules\gaxios\build\src\gaxios.js:142:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (C:\Users\Aashrith\Documents\scrapper-amazon\node_modules\google-auth-library\build\src\auth\oauth2client.js:429:18)
+    at async SheetsService.writeResults (C:\Users\Aashrith\Documents\scrapper-amazon\sheets.js:54:36)
+    at async test (C:\Users\Aashrith\Documents\scrapper-amazon\test_sheets_debug.js:25:22)
+2026-04-01 16:35:16 [INFO]: [SHEETS] Google Sheets API initialized for Sheet: 1NEpxeAVVtxLpDqD9kReqMM0wZBn-6Q2isgRziUAWkDg
+2026-04-01 16:35:18 [ERROR]: [SHEETS] Writing error in writeResults: The caller does not have permission
+Stack: Error: The caller does not have permission
+    at Gaxios._request (C:\Users\Aashrith\Documents\scrapper-amazon\node_modules\gaxios\build\src\gaxios.js:142:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (C:\Users\Aashrith\Documents\scrapper-amazon\node_modules\google-auth-library\build\src\auth\oauth2client.js:429:18)
+    at async SheetsService.writeResults (C:\Users\Aashrith\Documents\scrapper-amazon\sheets.js:54:36)
+    at async test (C:\Users\Aashrith\Documents\scrapper-amazon\test_sheets_debug.js:25:22)
+2026-04-01 16:36:50 [INFO]: [SHEETS] Google Sheets API initialized for Sheet: 1NEpxeAVVtxLpDqD9kReqMM0wZBn-6Q2isgRziUAWkDg
+2026-04-01 16:36:51 [ERROR]: [SHEETS] Writing error in writeResults: The caller does not have permission
+Stack: Error: The caller does not have permission
+    at Gaxios._request (C:\Users\Aashrith\Documents\scrapper-amazon\node_modules\gaxios\build\src\gaxios.js:142:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async JWT.requestAsync (C:\Users\Aashrith\Documents\scrapper-amazon\node_modules\google-auth-library\build\src\auth\oauth2client.js:429:18)
+    at async SheetsService.writeResults (C:\Users\Aashrith\Documents\scrapper-amazon\sheets.js:54:36)
+    at async test (C:\Users\Aashrith\Documents\scrapper-amazon\test_sheets_debug.js:25:22)
