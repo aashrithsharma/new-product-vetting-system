@@ -14,18 +14,33 @@ class AntigravitySheetsService {
             const spreadsheetId = sheetId || config.google.sheetId;
             if (!spreadsheetId) throw new Error('GOOGLE_SHEET_ID missing');
             let credentials;
+            
+            // Priority 1: Full JSON block in env
             if (process.env.GOOGLE_CREDENTIALS) {
                 let cleanCreds = process.env.GOOGLE_CREDENTIALS.trim();
                 if (cleanCreds.startsWith('-')) cleanCreds = cleanCreds.substring(1).trim();
                 credentials = JSON.parse(cleanCreds);
-            } else {
+            } 
+            // Priority 2: Individual keys in env (The Vercel way)
+            else if (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+                credentials = {
+                    client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+                    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+                };
+            }
+            // Priority 3: Local JSON file
+            else {
                 let credString = config.google.credentialsPath || '';
                 credString = credString.trim();
                 if (credString.startsWith('-')) credString = credString.substring(1).trim();
                 try {
                     credentials = JSON.parse(credString);
                 } catch (e) {
-                    credentials = JSON.parse(fs.readFileSync(credString, 'utf8'));
+                    if (fs.existsSync(credString)) {
+                        credentials = JSON.parse(fs.readFileSync(credString, 'utf8'));
+                    } else {
+                        throw new Error('Google Credentials not found (env or file)');
+                    }
                 }
             }
 

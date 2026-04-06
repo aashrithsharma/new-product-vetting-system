@@ -332,7 +332,8 @@ class Orchestrator {
                 }
 
                 // --- 3. EXPORT GENERATION (After all results added) ---
-                run.outputs = await exporter.generateOutputs(run.results, path.join(__dirname, 'outputs'), run.vettingResults, run.ideaName);
+                const outputDir = process.env.VERCEL ? '/tmp' : path.join(__dirname, 'outputs');
+                run.outputs = await exporter.generateOutputs(run.results, outputDir, run.vettingResults, run.ideaName);
 
                 // --- 4. SHEET WRITING ---
                 if (run.writeToSheets) {
