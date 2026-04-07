@@ -339,15 +339,22 @@ class Orchestrator {
                 if (run.writeToSheets) {
                     const successResults = run.results.filter(r => r.status === 'SUCCESS');
                     if (successResults.length > 0) {
-                        this.addLog(runId, 'INFO', `Writing ${successResults.length} results to a single Google Sheet...`);
+                        this.addLog(runId, 'INFO', `Writing ${successResults.length} results to Google Sheets...`);
                         run.sheetLink = await sheets.writeResults(successResults, run.customSheetId, run.vettingResults, run.ideaName);
-                        this.addLog(runId, 'INFO', `Sheet Writing complete. Link: ${run.sheetLink}`);
+                        
+                        if (run.sheetLink) {
+                            this.addLog(runId, 'INFO', `Sheet Writing complete. Link: ${run.sheetLink}`);
+                        } else {
+                            const robotEmail = 'six10venturesvetting@six10-idea-vetting.iam.gserviceaccount.com';
+                            this.addLog(runId, 'ERROR', `Sheet export failed. Likely a PERMISSION ISSUE. Make sure you shared your sheet with: ${robotEmail}`);
+                        }
+                    } else {
+                        this.addLog(runId, 'INFO', 'Skipping sheets write: No successful product data to export.');
                     }
                 }
-
+                logger.info(`[RUN:${runId}] All finalizing blocks finished successfully.`);
                 run.status = 'complete';
                 run.isComplete = true;
-                logger.info(`[RUN:${runId}] All finalizing blocks finished successfully.`);
             }
 
 

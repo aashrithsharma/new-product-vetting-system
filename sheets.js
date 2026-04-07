@@ -149,19 +149,21 @@ class SheetsService {
                     if (match) tier = match.tier;
                 }
 
+                const fNA = (val) => (val === 'N/A' || !val) ? '-' : val;
+
                 grid[0].push(i === 0 ? 'COLUMN 1 — INPUT PRODUCT' : `COLUMN ${i + 1} — COMPETITOR`);
-                grid[1].push(d.imageUrl ? `=IMAGE("${d.imageUrl}")` : 'N/A');
-                grid[2].push(d.brand || 'N/A');
-                grid[3].push(d.asin || 'N/A');
-                grid[4].push(d.price || 'N/A');
-                grid[5].push((d.stars && d.stars !== 'N/A') ? `★${d.stars}` : 'N/A');
-                grid[6].push(d.reviews || 'N/A');
-                grid[7].push(d.boughtPastMonth || d.bsr || 'N/A');
-                grid[8].push(d.dimensions || 'N/A');
-                grid[9].push(d.weight || 'N/A');
+                grid[1].push(d.imageUrl ? `=IMAGE("${d.imageUrl}")` : '-');
+                grid[2].push(fNA(d.brand));
+                grid[3].push(fNA(d.asin));
+                grid[4].push(fNA(d.price));
+                grid[5].push((d.stars && d.stars !== 'N/A') ? `★${d.stars}` : '-');
+                grid[6].push(fNA(d.reviews));
+                grid[7].push((d.boughtPastMonth && d.boughtPastMonth !== 'N/A') ? d.boughtPastMonth : fNA(d.bsr));
+                grid[8].push(fNA(d.dimensions));
+                grid[9].push(fNA(d.weight));
                 
                 // --- INDIVIDUAL SALES ESTIMATION ---
-                let estSales = 'N/A';
+                let estSales = '-';
                 if (d.boughtPastMonth && d.boughtPastMonth !== 'N/A') {
                     const m = d.boughtPastMonth.match(/([\d,K.]+)\+/i);
                     if (m) {
@@ -577,7 +579,14 @@ class SheetsService {
 
             return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${targetSheetId}`;
         } catch (error) {
-            logger.error(`[SHEETS] Writing error in writeResults: ${error.message}\nStack: ${error.stack}`);
+            const isPermissionError = error.message.includes('permission') || error.message.includes('403') || error.message.includes('caller does not have permission');
+            const robotEmail = 'six10venturesvetting@six10-idea-vetting.iam.gserviceaccount.com';
+            
+            if (isPermissionError) {
+                logger.error(`[SHEETS] CRITICAL: Permission Denied. You MUST share the spreadsheet (ID: ${spreadsheetId}) with the robot email: ${robotEmail} (as Editor).`);
+            } else {
+                logger.error(`[SHEETS] Writing error in writeResults: ${error.message}\nStack: ${error.stack}`);
+            }
             return null;
         }
     }

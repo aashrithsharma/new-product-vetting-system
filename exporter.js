@@ -53,29 +53,33 @@ class ExcelExporter {
             cell.font = boldFont;
         });
 
-        const maxComps = Math.min(results.length, 6);
+        const successResults = results.filter(r => r.status === 'SUCCESS');
+        const maxComps = Math.min(successResults.length, 6);
         for (let i = 0; i < maxComps; i++) {
-            const d = results[i].data;
+            const d = successResults[i].data;
+            if (!d) continue;
+
             const colIdx = i + 3; // C-H
             const aiComp = ai?.competitorAnalysis ? ai.competitorAnalysis.find(c => c.asin === d.asin) : null;
+            const fNA = (val) => (val === 'N/A' || !val) ? '-' : val;
 
-            sheet.getCell(1, colIdx).value = d.size || 'N/A';
+            sheet.getCell(1, colIdx).value = fNA(d.size);
             sheet.getCell(1, colIdx).fill = cyanFill; 
             
             sheet.getCell(2, colIdx).value = 'IMAGE'; 
-            sheet.getCell(3, colIdx).value = d.brand || 'N/A';
-            sheet.getCell(4, colIdx).value = d.asin || 'N/A';
+            sheet.getCell(3, colIdx).value = fNA(d.brand);
+            sheet.getCell(4, colIdx).value = fNA(d.asin);
             
             const price = parseFloat(String(d.price || '0').replace(/[^0-9.]/g, '')) || 0;
-            sheet.getCell(5, colIdx).value = price;
+            sheet.getCell(5, colIdx).value = price || '-';
             sheet.getCell(5, colIdx).fill = yellowFill; 
             sheet.getCell(5, colIdx).font = boldFont;
             sheet.getCell(5, colIdx).numFmt = '"$"#,##0.00';
 
             sheet.getCell(6, colIdx).value = aiComp ? aiComp.estimatedUnitsPerDay : (parseInt(String(d.boughtPastMonth || '0').replace(/[^0-9]/g, '')) || 0);
-            sheet.getCell(7, colIdx).value = parseFloat(d.stars) || 0;
+            sheet.getCell(7, colIdx).value = parseFloat(d.stars) || '-';
             sheet.getCell(8, colIdx).value = parseInt(String(d.reviews || '0').replace(/[^0-9]/g, '')) || 0;
-            sheet.getCell(9, colIdx).value = d.title || 'N/A';
+            sheet.getCell(9, colIdx).value = fNA(d.title);
         }
 
         // --- 2. SUMMARY DASHBOARD ---
