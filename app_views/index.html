@@ -1050,9 +1050,9 @@
                 const res = await fetch(`/api/scrape/${currentRunId}/progress`);
                 const data = await res.json();
                 
-                // Protect against Vercel serverless stateless routing (hitting a cold container without the RAM cache)
-                if (data.error === 'Run not found') {
-                    console.warn('Vercel stateless routing hit a cold container. Ignoring and retrying...');
+                // Protect against ANY Vercel serverless stateless routing issues, cold containers, or infrastructure timeouts
+                if (data.error || typeof data.completedAsins === 'undefined') {
+                    console.warn('Vercel stateless routing hit a cold container or Vercel JSON error. Ignoring and retrying...', data);
                     return; 
                 }
 
