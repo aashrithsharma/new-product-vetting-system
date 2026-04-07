@@ -163,7 +163,7 @@ class ScraperEngine {
 
         // Quality Check & Robust Fallback (Layer 3: Browser Rendering)
         // If critical data (BSR, Rating, Dimensions, Weight) is still N/A, we try a rendered fetch
-        const isDataMissing = (data.bsr === 'N/A' || data.stars === 'N/A' || data.dimensions === 'N/A' || data.weight === 'N/A');
+        const isDataMissing = (data.bsr === 'N/A' || data.stars === 'N/A');
         const isRenderRun = (typeof product === 'object' && product.render === true);
         const canRetryRender = process.env.SCRAPERAPI_KEY && !isRenderRun; // Prevent infinite loop
 
