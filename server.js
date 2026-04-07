@@ -41,7 +41,15 @@ app.use((req, res, next) => {
     res.status(401).send('Authentication required. Please provide credentials.');
 });
 
-app.use(express.static(path.join(__dirname, 'app_views')));
+app.use(express.static(path.join(__dirname, 'app_views'), {
+    setHeaders: (res, path) => {
+        if (path.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+    }
+}));
 
 // Routes
 app.get('/api/status', (req, res) => {
