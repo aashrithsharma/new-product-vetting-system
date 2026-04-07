@@ -156,9 +156,19 @@ app.post('/api/scrape', async (req, res) => {
     }
 });
 
-app.get('/api/scrape/:runId/progress', (req, res) => {
+app.get('/api/scrape/:runId/progress', async (req, res) => {
     const state = orchestrator.getRunState(req.params.runId);
     if (!state) return res.status(404).json({ error: 'Run not found' });
+    
+    // VERCEL HACK: Keep the container awake during the background execution
+    // Vercel pauses background executions when there is no active HTTP request.
+    // By keeping the polling request open for a few seconds, we ensure the CPU
+    // continues scraping at maximum speed without immediately freezing.
+    if (process.env.VERCEL && !state.isComplete && state.status !== 'failed' && state.status !== 'cancelled') {
+        const { delay } = require('./utils');
+        await delay(2500); // Hold CPU awake for 2.5s per ping
+    }
+    
     res.json(state);
 });
 
