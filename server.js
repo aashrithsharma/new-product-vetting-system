@@ -164,9 +164,18 @@ app.post('/api/scrape', async (req, res) => {
     }
 });
 
-app.get('/api/scrape/:runId/progress', (req, res) => {
+app.get('/api/scrape/:runId/progress', async (req, res) => {
     const state = orchestrator.getRunState(req.params.runId);
     if (!state) return res.status(404).json({ error: 'Run not found' });
+    
+    // SERVERLESS AWAKE LOOP
+    // Keeps background script running at 80% full speed by artificially delaying the HTTP response
+    // Must remain strictly < 2000ms (client poll rate) to prevent Vercel container splitting
+    if (process.env.VERCEL && !state.isComplete && state.status !== 'failed' && state.status !== 'cancelled') {
+        const { delay } = require('./utils');
+        await delay(1600);
+    }
+
     res.json(state);
 });
 
