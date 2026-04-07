@@ -61,25 +61,22 @@ If deploying the system to a new team member, or recreating the database pipelin
 
 ## 🗂 SECTION 3: Troubleshooting Common Glitches
 
-Because this scraper runs on a cloud server network (Vercel), you might occasionally run into connection hiccups. Here is how both regular users and developers can handle them.
+Because the website runs on an automated cloud network, you might occasionally run into connection hiccups. Here is exactly what is happening and how to quickly resolve it.
 
-### Scenario A: The Screen Keeps Crashing to "Processing undefined of undefined"
-- **The Problem (For Everyone):** You opened the scraper, put in a link, and the progress bar immediately glitched out and printed the word "undefined". This happens because your web browser is stubbornly remembering an old, broken version of the website. 
-- **The Fix (For Everyone):** You simply need to force your browser to forget the old website.
-  - On **Windows**: Press and hold `Ctrl` + `Shift` + `R`
-  - On **Mac**: Press and hold `Cmd` + `Shift` + `R`
-  - This is called a "Hard Refresh" and will instantly fix the screen.
-- **Developer Details (For Tech Team):** Vercel's global CDN caches `index.html` aggressively. While we have added `Cache-Control: no-store` headers in `server.js` and a protective JSON `typeof` shield in `index.html`, browsers that visited the site previously will often bypass these new headers. A hard refresh forces the browser to discard its local memory and fetch the new protective Javascript logic.
+### Scenario A: The Screen Freezes and Displays "Processing undefined"
+- **The Problem:** You opened the scraper, entered a link, and the progress bar immediately glitched out, printing the word "undefined". This happens because your web browser is stubbornly remembering an old, broken version of the website. 
+- **The Solution:** You simply need to force your browser to forget the outdated page and fetch the newest update.
+  - On **Windows**: Press and hold `Ctrl + Shift + R`
+  - On **Mac**: Press and hold `Cmd + Shift + R`
+  - This is called a "Hard Refresh" and will instantly fix the screen glitch.
 
-### Scenario B: The Scraper Just Randomly Stops or Times Out
-- **The Problem (For Everyone):** The scraper was working normally, but suddenly processing froze entirely and nothing happened for more than 5 minutes.
-- **The Fix (For Everyone):** The cloud server simply fell asleep while waiting for Amazon to reply. Just refresh the page and start the scrape again. Do not open multiple tabs doing scrapes at the same time, as this confuses the server.
-- **Developer Details (For Tech Team):** Deployments on Vercel Node boundaries strictly sleep when there is no active HTTP request. To solve this, `server.js` uses a `delay(1600)` hook inside `/api/scrape/:runId/progress`. This keeps the API connection open for 1.6 seconds out of every 2-second UI poll. **NEVER** increase this number above 1600. If it hits 2000ms, the connections will overlap, Vercel will interpret the container as busy, and it will spawn blind "ghost" containers, causing immediate "Run Not Found" errors. 
+### Scenario B: The Scraper Randomly Stops or Freezes Forever
+- **The Problem:** The scraper was working normally, but suddenly processing froze entirely and nothing happened for several minutes. This happens because the cloud servers fall asleep if an Amazon page takes too long to load.
+- **The Solution:** Just refresh the web page and click "Start Scraping" again. To prevent this from keeping happening, **never open multiple tabs** doing scrapes at the exact same time, as this overwhelms the system. If you manage the server settings, ensure no internal delay numbers ever exceed exactly 1.6 seconds, or the server will break itself.
 
-### Scenario C: The AI Output Prices or Numbers Look Very Wrong
-- **The Problem (For Everyone):** The AI algorithm evaluated the Amazon listings but generated unrealistic target prices or strange volume scenarios (e.g. comparing a 1-pack of goods against a 12-pack of bulk goods).
-- **The Fix (For Everyone):** This is not a software crash; this means Claude (the AI) misunderstood the Amazon product title. Ping the development team so they can adjust the rules the AI uses to think.
-- **Developer Details (For Tech Team):** Anthropic Claude 3.5 Sonnet handles the vetting logic. If it fails to identify pack hierarchy, you must edit the System Prompt. Navigate directly into `vettingEngine.js`, localized from line 28 to 60. Adjust the string prompt to forcefully restrict the AI's volume logic and deploy the updated prompt to GitHub.
+### Scenario C: The Data or Prices Look Completely Wrong
+- **The Problem:** The automated analyzer evaluated the Amazon listings but generated totally unrealistic target prices or strange comparisons (for example, comparing a 1-pack of goods against a 12-pack of bulk goods).
+- **The Solution:** The system has not crashed; the AI simply misunderstood the Amazon product title hierarchy. You will need to ping your development team so they can adjust the AI's internal instruction manual (the System Prompt). This allows them to explicitly forbid the AI from matching incorrect package sizes in the future.
 
 ---
 
