@@ -166,7 +166,7 @@ app.get('/api/scrape/:runId/progress', async (req, res) => {
     // continues scraping at maximum speed without immediately freezing.
     if (process.env.VERCEL && !state.isComplete && state.status !== 'failed' && state.status !== 'cancelled') {
         const { delay } = require('./utils');
-        await delay(2500); // Hold CPU awake for 2.5s per ping
+        await delay(1200); // Hold CPU awake for 1.2s per ping (must be less than client UI 2s interval to prevent multi-container spread)
     }
     
     res.json(state);
