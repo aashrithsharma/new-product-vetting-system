@@ -665,10 +665,9 @@
 
             <div id="errorBox" class="error-box"></div>
 
-            <label>Download as:</label>
-            <div class="checkbox-group">
-                <label class="checkbox-item"><input type="checkbox" id="csvCheck" checked> CSV file</label>
-                <label class="checkbox-item"><input type="checkbox" id="xlsxCheck" checked> Excel file (.xlsx)</label>
+            <div class="hidden">
+                <input type="checkbox" id="csvCheck">
+                <input type="checkbox" id="xlsxCheck">
             </div>
 
             <div class="toggle-section">
@@ -786,9 +785,7 @@
             </div>
 
             <div id="downloadButtons" class="download-buttons hidden">
-                <button id="dlCsv" class="download-btn">⬇ Download CSV</button>
-                <button id="dlXlsx" class="download-btn">⬇ Download Excel (.xlsx)</button>
-                <button id="openSheet" class="download-btn sheet-btn hidden">📊 Open Google Sheet</button>
+                <button id="openSheet" class="download-btn sheet-btn" style="width: 100%; font-size: 16px;">📊 View Results in Google Sheets</button>
             </div>
                 </div>
             </div>
@@ -976,9 +973,7 @@
             }
 
             const writeToSheets = document.getElementById('sheetsToggle').checked;
-            const formats = [];
-            if (document.getElementById('csvCheck') && document.getElementById('csvCheck').checked) formats.push('csv');
-            if (document.getElementById('xlsxCheck') && document.getElementById('xlsxCheck').checked) formats.push('xlsx');
+            const formats = []; // CSV/Excel removed per project requirements
 
             const payload = {
                 mode: activeMode,
@@ -1134,20 +1129,7 @@
 
             document.getElementById('downloadButtons').classList.remove('hidden');
 
-            const formats = data.formats || [];
-            if (formats.includes('csv')) {
-                const dl = document.getElementById('dlCsv');
-                dl.onclick = () => window.location.href = `/api/scrape/${currentRunId}/download/csv`;
-            } else {
-                document.getElementById('dlCsv').classList.add('hidden');
-            }
-
-            if (formats.includes('xlsx')) {
-                const dl = document.getElementById('dlXlsx');
-                dl.onclick = () => window.location.href = `/api/scrape/${currentRunId}/download/xlsx`;
-            } else {
-                document.getElementById('dlXlsx').classList.add('hidden');
-            }
+            // CSV/XSLX downloads hidden per user request
 
             if (data.sheetLink) {
                 const os = document.getElementById('openSheet');
