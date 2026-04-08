@@ -113,6 +113,11 @@ class Orchestrator {
                         result.duration = durationAsin;
                         result.originalUrl = product.originalUrl;
 
+                        // HEALING PASS: If regular scraping failed to find dimensions/weight, ask the AI
+                        if (result.status === 'SUCCESS') {
+                            await vettingEngine.healProductData(result.data, result.rawText || '');
+                        }
+
                         run.results.push(result);
                         run.completedAsins++;
                         asinCount++;
@@ -165,6 +170,9 @@ class Orchestrator {
                         retryResult.originalUrl = product.originalUrl;
 
                         if (retryResult.status === 'SUCCESS') {
+                            // HEALING PASS: If regular scraping failed to find dimensions/weight, ask the AI
+                            await vettingEngine.healProductData(retryResult.data, retryResult.rawText || '');
+                            
                             if (run.results[index].status === 'CAPTCHA_BLOCKED') run.blockedAsins--;
                             else run.failedAsins--;
                             
@@ -275,6 +283,9 @@ class Orchestrator {
                                     const compResult = await scraper.scrapeASIN({ asin: comp.asin, domain: primary.domain || 'amazon.com' });
 
                                     if (compResult.status === 'SUCCESS') {
+                                        // HEALING PASS: Correct any N/As in competitors
+                                        await vettingEngine.healProductData(compResult.data, compResult.rawText || '');
+                                        
                                         run.results.push(compResult);
                                         run.succeededAsins++;
                                         this.addLog(runId, 'CHECK', `[DISCOVERED] ${comp.asin} — $${compResult.data.price} — ${compResult.data.brand || 'N/A'}`);

@@ -399,8 +399,21 @@ class ScraperEngine {
         if (sizeMatch) results.size = cleanText(sizeMatch[0]);
 
         // PROJECT 2 EXTENSIONS: Dimensions, Weight
-        const dimKeys = ['product dimensions', 'item dimensions lxwxh', 'package dimensions', 'dimensions', 'size'];
+        // PROJECT 2 EXTENSIONS: Dimensions, Weight
+        const dimKeys = ['product dimensions', 'item dimensions lxwxh', 'package dimensions', 'dimensions', 'size', 'item dimensions'];
         for (const k of dimKeys) { if (details[k]) { results.dimensions = cleanText(details[k]); break; } }
+        
+        // Aggressive table lookup for dimensions if still N/A
+        if (results.dimensions === 'N/A') {
+            $('.a-keyvalue tr, .prodDetTable tr').each((i, el) => {
+                const label = $(el).find('th, td:first-child').text().toLowerCase();
+                const value = $(el).find('td').last().text().trim();
+                if (label.includes('dimensions') || label.includes('size')) {
+                    results.dimensions = cleanText(value);
+                    return false;
+                }
+            });
+        }
         
         const weightKeys = ['item weight', 'package weight', 'weight', 'shipping weight'];
         for (const k of weightKeys) { if (details[k]) { results.weight = cleanText(details[k]); break; } }
@@ -432,14 +445,18 @@ class ScraperEngine {
         }
 
         // Deep Brute-Force Fallback for Weight/Dimensions from body text
-        // Require at least one digit before the unit to avoid matching ".g" or ".oz"
-        if (results.weight === 'N/A') {
-            const weightM = $('body').text().match(/\b(\d+\.?\d*\s*(?:pounds|lbs|ounces|oz|grams|kg))\b/i);
-            if (weightM) results.weight = cleanText(weightM[1]);
-        }
         if (results.dimensions === 'N/A') {
-            const dimM = $('body').text().match(/([\d.]+\s*x\s*[\d.]+\s*x\s*[\d.]+(?:\s*x\s*[\d.]+)?\s*(?:inches|in|cm|mm))/i);
-            if (dimM) results.dimensions = cleanText(dimM[0]);
+            // Regex for 12 x 10 x 5 inches, 12" x 10", 12.5 x 1.2 in, etc.
+            const dimRegex = /([\d.]+\s*(?:["']|inches|in|cm|mm)?\s*x\s*[\d.]+\s*(?:["']|inches|in|cm|mm)?\s*x\s*[\d.]+\s*(?:["']|inches|in|cm|mm)?)/i;
+            const dimM = (fullBodyText || $('body').text()).match(dimRegex);
+            if (dimM) results.dimensions = cleanText(dimM[1]);
+        }
+        
+        if (results.weight === 'N/A') {
+            // Regex for "1.2 pounds", "1.2 lbs", "10 oz", etc.
+            const weightRegex = /\b(\d+\.?\d*\s*(?:pounds|lbs|ounces|oz|grams|kg|g|lb))\b/i;
+            const weightM = (fullBodyText || $('body').text()).match(weightRegex);
+            if (weightM) results.weight = cleanText(weightM[1]);
         }
 
         // PROJECT 2 EXTENSIONS: "Bought in past month" Badge

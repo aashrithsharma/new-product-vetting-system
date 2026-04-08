@@ -47,6 +47,58 @@ class VettingEngine {
     }
 
     /**
+     * AI-Assisted Data Extraction Fallback (The "N/A Healer")
+     * Resolves missing dimensions/weight/sales from raw page text.
+     */
+    async healProductData(productData, rawText) {
+        if (!this.anthropic) return productData;
+
+        const missingFields = [];
+        if (productData.dimensions === 'N/A') missingFields.push('Dimensions (LxWxH)');
+        if (productData.weight === 'N/A') missingFields.push('Item Weight');
+        if (productData.boughtPastMonth === 'N/A' || productData.boughtPastMonth === '0') missingFields.push('Monthly Sales Volume (e.g. 50+ bought in past month)');
+
+        if (missingFields.length === 0) return productData;
+
+        logger.info(`[VETTING] HEALING: ${productData.asin} is missing [${missingFields.join(', ')}]. Asking AI to solve...`);
+
+        // Snip the raw text to avoid token limits but keep the important parts (Product Details)
+        const snip = rawText.substring(0, 15000); 
+
+        const prompt = `Extract specific product data from this Amazon Page Text.
+Fields to find: ${missingFields.join(', ')}
+
+ASIN: ${productData.asin}
+Title: ${productData.title}
+
+TEXT:
+${snip}
+
+Return ONLY a JSON object with the found keys. If not found, use "N/A".
+Example: {"dimensions": "12 x 10 x 5 inches", "weight": "2.3 lbs", "boughtPastMonth": "200+ bought in past month"}`;
+
+        try {
+            const res = await this.callClaude({
+                messages: [{ role: 'user', content: prompt }],
+                max_tokens: 300
+            });
+
+            const content = res.content[0].text;
+            const healed = JSON.parse(content.match(/\{[\s\S]*\}/)[0]);
+
+            if (healed.dimensions && healed.dimensions !== 'N/A') productData.dimensions = healed.dimensions;
+            if (healed.weight && healed.weight !== 'N/A') productData.weight = healed.weight;
+            if (healed.boughtPastMonth && healed.boughtPastMonth !== 'N/A') productData.boughtPastMonth = healed.boughtPastMonth;
+
+            logger.info(`[VETTING] HEAL SUCCESS: ${productData.asin} dimensions: ${productData.dimensions}, weight: ${productData.weight}`);
+            return productData;
+        } catch (e) {
+            logger.warn(`[VETTING] Healing failed for ${productData.asin}: ${e.message}`);
+            return productData;
+        }
+    }
+
+    /**
      * Main vetting pipeline for a specific product idea.
      */
     async analyzeIdea(ideaName, competitorData) {
@@ -235,28 +287,35 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
                 badgeDaily,
                 bsrAdjusted,
                 competitorAdjustedDaily,
-                // Dynamic Market Capture Factors
-                launchMostLikely: Math.max(1, Math.round(competitorAdjustedDaily * 0.10)), // 10% of market share at launch
-                launchBestCase:   Math.max(1, Math.round(competitorAdjustedDaily * 0.30))  // 30% of market share at launch
+                // Dynamic Market Capture Factors (SIX10 RELATIVE CAPTURE)
+                // ML: 6-10% of market share (Conservative Entry)
+                // BC: 20-30% of market leader share (Strong Launch)
+                launchMostLikely: Math.max(1, Math.round(competitorAdjustedDaily * 0.08)), // Lowered to 8% for realism
+                launchBestCase:   Math.max(1, Math.round(competitorAdjustedDaily * 0.22))  // Lowered to 22% for realism
             };
         }).filter(Boolean);
 
         if (parsed.length === 0) {
-            logger.warn('[VETTING] No badge data found — using Six10 conservative defaults (15/35).');
-            return { mostLikely: 15, bestCase: 35, perCompetitor: [] };
+            logger.warn('[VETTING] No badge data found — using Six10 conservative defaults (12/30).');
+            return { mostLikely: 12, bestCase: 30, perCompetitor: [] };
         }
 
         // Sort by competitorAdjustedDaily descending (strongest to weakest)
         parsed.sort((a, b) => b.competitorAdjustedDaily - a.competitorAdjustedDaily);
 
-        // Most Likely = Average entry capture (10% of top volume)
+        // Most Likely = Average entry capture (8% of top volume)
         const top3 = parsed.slice(0, Math.min(3, parsed.length));
         const rawMostLikely = Math.round(top3.reduce((s, c) => s + c.launchMostLikely, 0) / top3.length);
-        const mostLikely = Math.max(5, rawMostLikely); // No hard cap — scales with category
+        const mostLikely = Math.min(65, Math.max(5, rawMostLikely)); // Capped at 65/day for realism
 
-        // Best Case = Professional launch capture (30% of market leader)
+        // Best Case = Professional launch capture (22% of market leader)
         const rawBestCase = parsed[0].launchBestCase;
-        const bestCase = Math.max(10, rawBestCase); // Scales based on category depth
+        let bestCase = Math.min(125, Math.max(12, rawBestCase)); // Absolute ceiling of 125/day for Best Case
+        
+        // Ensure Best Case isn't more than 3x Most Likely (Sanity proportionality)
+        if (bestCase > mostLikely * 3) {
+            bestCase = Math.round(mostLikely * 2.5);
+        }
 
         logger.info(`[VETTING] Dynamic Baseline — Top Comp: ${parsed[0].competitorAdjustedDaily}/day, ML=${mostLikely}/day, BC=${bestCase}/day`);
 
