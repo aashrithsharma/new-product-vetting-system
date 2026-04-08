@@ -446,6 +446,18 @@ class ScraperEngine {
 
         const fullBodyText = $('body').text().replace(/\s+/g, ' ');
 
+        if (results.weight === 'N/A') {
+            const weightKeys = ['item weight', 'package weight', 'weight', 'shipping weight'];
+            $('.a-keyvalue tr, .prodDetTable tr').each((i, el) => {
+                const label = $(el).find('th, td:first-child').text().toLowerCase();
+                const value = $(el).find('td').last().text().trim();
+                if (weightKeys.some(k => label.includes(k))) {
+                    results.weight = cleanText(value);
+                    return false;
+                }
+            });
+        }
+
         // Deep Brute-Force Fallback for Weight/Dimensions from body text
         if (results.dimensions === 'N/A') {
             // Regex for 12 x 10 x 5 inches, 12" x 10", 12.5 x 1.2 in, etc.
@@ -455,8 +467,9 @@ class ScraperEngine {
         }
         
         if (results.weight === 'N/A') {
-            // Regex for "1.2 pounds", "1.2 lbs", "10 oz", etc.
-            const weightRegex = /\b(\d+\.?\d*\s*(?:pounds|lbs|ounces|oz|grams|kg|g|lb))\b/i;
+            // Brute force weight - Avoid single 'g' or 'G' as it hits model numbers like "51G"
+            // Use longer units for body-wide brute force
+            const weightRegex = /\b(\d+\.?\d*\s*(?:pounds|lbs|ounces|oz|grams|kg|pounds|lb))\b/i;
             const weightM = fullBodyText.match(weightRegex);
             if (weightM) results.weight = cleanText(weightM[1]);
         }

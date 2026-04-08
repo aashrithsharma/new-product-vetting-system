@@ -53,9 +53,18 @@ class VettingEngine {
     async healProductData(productData, rawText) {
         if (!this.anthropic) return productData;
 
+        // Detect "Suspicious" weight (e.g. "51G" or "G" or tiny weights that might be false positives)
+        const isSuspiciousWeight = productData.weight === 'N/A' || 
+                                  productData.weight.length <= 3 || 
+                                  /^\d+[gG]$/.test(productData.weight);
+
         const missingFields = [];
         if (productData.dimensions === 'N/A') missingFields.push('Dimensions (LxWxH)');
-        if (productData.weight === 'N/A') missingFields.push('Item Weight');
+        if (isSuspiciousWeight) {
+            missingFields.push('Item Weight');
+            // If suspicious, reset it to N/A so Claude is forced to find it
+            productData.weight = 'N/A';
+        }
         if (productData.boughtPastMonth === 'N/A' || productData.boughtPastMonth === '0') missingFields.push('Monthly Sales Volume (e.g. 50+ bought in past month)');
 
         if (missingFields.length === 0) return productData;
