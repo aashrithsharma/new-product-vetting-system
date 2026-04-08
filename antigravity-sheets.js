@@ -102,14 +102,16 @@ class AntigravitySheetsService {
             // COMP RESEARCH SECTION (Rows 1-10)
             // (Note: In JS indices are 0-based, so Row 1 is values[0])
             values[0][1] = 'Size'; // B1
-            values[1][1] = 'Form'; // B2
+            values[1][1] = 'Form'; // B2 (Image)
             values[2][1] = 'Brand Name'; // B3
             values[3][1] = 'ASIN'; // B4
             values[4][1] = 'Selling Price'; // B5
-            values[5][1] = 'Average units sold per day'; // B6
-            values[6][1] = 'Stars'; // B7
-            values[7][1] = 'Reviews'; // B8
-            values[8][1] = 'Title'; // B9
+            values[5][1] = 'Stars'; // B6
+            values[6][1] = 'Reviews'; // B7
+            values[7][1] = 'Average units sold per day'; // B8
+            values[8][1] = 'Dimensions'; // B9
+            values[9][1] = 'Weight'; // B10
+            values[10][1] = 'Title'; // B11
 
             for (let i = 0; i < Math.min(results.length, 6); i++) {
                 const colIdx = i + 2; // C onwards
@@ -121,11 +123,12 @@ class AntigravitySheetsService {
                 values[2][colIdx] = d.brand || 'N/A';
                 values[3][colIdx] = d.asin || 'N/A';
                 values[4][colIdx] = d.price || 'N/A';
-                values[5][colIdx] = aiComp ? aiComp.estimatedUnitsPerDay : (d.boughtPastMonth || 'N/A');
-                values[6][colIdx] = d.stars || 'N/A';
-                values[7][colIdx] = d.reviews || 'N/A';
-                values[8][colIdx] = d.title || 'N/A';
-                values[9][colIdx] = 'FALSE';
+                values[5][colIdx] = d.stars || 'N/A';
+                values[6][colIdx] = d.reviews || 'N/A';
+                values[7][colIdx] = aiComp ? aiComp.estimatedUnitsPerDay : (d.boughtPastMonth || 'N/A');
+                values[8][colIdx] = d.dimensions || 'N/A';
+                values[9][colIdx] = d.weight || 'N/A';
+                values[10][colIdx] = d.title || 'N/A';
             }
 
             // I5 - Target COGS for SKU 1
