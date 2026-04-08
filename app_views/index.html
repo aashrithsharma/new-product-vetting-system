@@ -625,41 +625,35 @@
 
             <!-- Option A — ASINs -->
             <div id="sectionA" class="form-group option-section-a">
-                <div class="section-title">Paste ASINs</div>
                 <div class="flex justify-between items-center mb-2">
-                    <label for="asinInput" class="block text-sm font-medium text-gray-700">ASINs</label>
-                    <span id="asinCount" class="text-xs font-medium text-blue-500 bg-blue-50 px-2 py-1 rounded-full border border-blue-100">0/10</span>
+                    <label for="asinInput" class="block text-sm font-medium text-gray-700">Enter or input 1 link or ASIN, or you can input the ASINs which are competitors</label>
                 </div>
                 <div class="relative group">
                     <textarea id="asinInput"
                         class="w-full h-32 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none text-sm placeholder-gray-400 group-hover:bg-white"
-                        placeholder="Example: B0BZV6W8X9&#10;B0C2CY22B8&#10;B0BSG9N1X8&#10;&#10;Enter up to 10 ASINs (one per line)"></textarea>
+                        placeholder="Example: B0BZV6W8X9&#10;B0C2CY22B8"></textarea>
                     <div class="absolute right-3 bottom-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                         <span class="text-[10px] text-gray-400 font-medium">Auto-detected</span>
                     </div>
                 </div>
-                <p id="asinWarning" class="mt-2 text-xs text-amber-600 font-medium hidden flex items-center gap-1">
-                    <i class="fas fa-exclamation-triangle"></i> Limited to first 10 ASINs
+                <p id="asinWarning" class="mt-2 text-xs text-amber-600 font-medium hidden">
                 </p>
             </div>
 
             <!-- Option B — URLs -->
             <div id="sectionB" class="form-group option-section-b">
-                <div class="section-title">Paste Amazon URLs</div>
                 <div class="flex justify-between items-center mb-2">
-                    <label for="urlInput" class="block text-sm font-medium text-gray-700">URLs</label>
-                    <span id="urlCount" class="text-xs font-medium text-blue-500 bg-blue-50 px-2 py-1 rounded-full border border-blue-100">0/10</span>
+                    <label for="urlInput" class="block text-sm font-medium text-gray-700">Enter or input 1 link or Amazon URL, or you can input the links which are competitors</label>
                 </div>
                 <div class="relative group">
                     <textarea id="urlInput"
                         class="w-full h-32 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none text-sm placeholder-gray-400 group-hover:bg-white"
-                        placeholder="Example: https://www.amazon.com/dp/B0BZV6W8X9&#10;https://www.amazon.com/dp/B0C2CY22B8&#10;&#10;Enter up to 10 URLs (one per line)"></textarea>
+                        placeholder="Example: https://www.amazon.com/dp/B0BZV6W8X9"></textarea>
                     <div class="absolute right-3 bottom-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                         <span class="text-[10px] text-gray-400 font-medium">Auto-detected</span>
                     </div>
                 </div>
-                <p id="urlWarning" class="mt-2 text-xs text-amber-600 font-medium hidden flex items-center gap-1">
-                    <i class="fas fa-exclamation-triangle"></i> Limited to first 10 URLs
+                <p id="urlWarning" class="mt-2 text-xs text-amber-600 font-medium hidden">
                 </p>
             </div>
 
@@ -909,15 +903,7 @@
         }
 
         function updateCounters() {
-            const asinText = asinInput.value.trim();
-            const asins = asinText.split('\n').filter(l => l.trim().length > 0);
-            asinCount.textContent = `${asins.length}/10`;
-            asinWarning.classList.toggle('hidden', asins.length <= 10);
-
-            const urlText = urlInput.value.trim();
-            const urls = urlText.split('\n').filter(l => l.trim().length > 0);
-            urlCount.textContent = `${urls.length}/10`;
-            urlWarning.classList.toggle('hidden', urls.length <= 10);
+            // Limits and counters removed per user request
         }
 
         asinInput.addEventListener('input', () => { hideError(); updateCounters(); });
