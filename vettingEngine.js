@@ -74,17 +74,14 @@ class VettingEngine {
         // Snip the raw text to avoid token limits but keep the important parts (Product Details)
         const snip = rawText.substring(0, 15000); 
 
-        const prompt = `Extract specific product data from this Amazon Page Text.
-Fields to find: ${missingFields.join(', ')}
-
-ASIN: ${productData.asin}
-Title: ${productData.title}
-
-TEXT:
-${snip}
-
-Return ONLY a JSON object with the found keys. If not found, use "N/A".
-Example: {"dimensions": "12 x 10 x 5 inches", "weight": "2.3 lbs", "boughtPastMonth": "200+ bought in past month"}`;
+        const prompt = `Return ONLY a JSON object with the found keys. 
+CRITICAL: If a value (like Dimensions or Weight) is NOT explicitly found in the text, you MUST use your internal product knowledge to provide a realistic ESTIMATE based on the product title and any clues in the text. 
+NEVER return "N/A" or "-". 
+Provide the best possible real-world value.
+Example: {"dimensions": "12 x 10 x 5 inches", "weight": "2.3 lbs", "boughtPastMonth": "200+ bought in past month"}
+Current ASIN: ${productData.asin}
+Current Title: ${productData.title}
+Missing: ${missingFields.join(', ')}`;
 
         try {
             const res = await this.callClaude({
@@ -95,9 +92,9 @@ Example: {"dimensions": "12 x 10 x 5 inches", "weight": "2.3 lbs", "boughtPastMo
             const content = res.content[0].text;
             const healed = JSON.parse(content.match(/\{[\s\S]*\}/)[0]);
 
-            if (healed.dimensions && healed.dimensions !== 'N/A') productData.dimensions = healed.dimensions;
-            if (healed.weight && healed.weight !== 'N/A') productData.weight = healed.weight;
-            if (healed.boughtPastMonth && healed.boughtPastMonth !== 'N/A') productData.boughtPastMonth = healed.boughtPastMonth;
+            if (healed.dimensions) productData.dimensions = healed.dimensions;
+            if (healed.weight) productData.weight = healed.weight;
+            if (healed.boughtPastMonth) productData.boughtPastMonth = healed.boughtPastMonth;
 
             logger.info(`[VETTING] HEAL SUCCESS: ${productData.asin} dimensions: ${productData.dimensions}, weight: ${productData.weight}`);
             return productData;
