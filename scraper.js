@@ -444,18 +444,20 @@ class ScraperEngine {
             }
         }
 
+        const fullBodyText = $('body').text().replace(/\s+/g, ' ');
+
         // Deep Brute-Force Fallback for Weight/Dimensions from body text
         if (results.dimensions === 'N/A') {
             // Regex for 12 x 10 x 5 inches, 12" x 10", 12.5 x 1.2 in, etc.
             const dimRegex = /([\d.]+\s*(?:["']|inches|in|cm|mm)?\s*x\s*[\d.]+\s*(?:["']|inches|in|cm|mm)?\s*x\s*[\d.]+\s*(?:["']|inches|in|cm|mm)?)/i;
-            const dimM = (fullBodyText || $('body').text()).match(dimRegex);
+            const dimM = fullBodyText.match(dimRegex);
             if (dimM) results.dimensions = cleanText(dimM[1]);
         }
         
         if (results.weight === 'N/A') {
             // Regex for "1.2 pounds", "1.2 lbs", "10 oz", etc.
             const weightRegex = /\b(\d+\.?\d*\s*(?:pounds|lbs|ounces|oz|grams|kg|g|lb))\b/i;
-            const weightM = (fullBodyText || $('body').text()).match(weightRegex);
+            const weightM = fullBodyText.match(weightRegex);
             if (weightM) results.weight = cleanText(weightM[1]);
         }
 
@@ -476,7 +478,6 @@ class ScraperEngine {
             }
         }
         
-        const fullBodyText = $('body').text().replace(/\s+/g, ' ');
         // Regex to find "50+ bought in past month", "1K+ bought in past month", etc.
         const boughtM = (boughtTextRaw || fullBodyText).match(/([\d,K.]+)\s*(?:\+|plus)?\s*(?:bought|viewed)\s*in\s*past\s*month/i);
         

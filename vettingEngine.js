@@ -288,35 +288,28 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
                 bsrAdjusted,
                 competitorAdjustedDaily,
                 // Dynamic Market Capture Factors (SIX10 RELATIVE CAPTURE)
-                // ML: 6-10% of market share (Conservative Entry)
-                // BC: 20-30% of market leader share (Strong Launch)
-                launchMostLikely: Math.max(1, Math.round(competitorAdjustedDaily * 0.08)), // Lowered to 8% for realism
-                launchBestCase:   Math.max(1, Math.round(competitorAdjustedDaily * 0.22))  // Lowered to 22% for realism
+                // ML: ~10% of market share (Conservative Entry)
+                // BC: ~30% of market leader share (Strong Launch)
+                launchMostLikely: Math.max(1, Math.round(competitorAdjustedDaily * 0.10)), 
+                launchBestCase:   Math.max(1, Math.round(competitorAdjustedDaily * 0.30)) 
             };
         }).filter(Boolean);
 
         if (parsed.length === 0) {
-            logger.warn('[VETTING] No badge data found — using Six10 conservative defaults (12/30).');
-            return { mostLikely: 12, bestCase: 30, perCompetitor: [] };
+            logger.warn('[VETTING] No badge data found — using Six10 conservative defaults (15/35).');
+            return { mostLikely: 15, bestCase: 35, perCompetitor: [] };
         }
 
         // Sort by competitorAdjustedDaily descending (strongest to weakest)
         parsed.sort((a, b) => b.competitorAdjustedDaily - a.competitorAdjustedDaily);
 
-        // Most Likely = Average entry capture (8% of top volume)
+        // Most Likely = Average entry capture (10% of top volume)
         const top3 = parsed.slice(0, Math.min(3, parsed.length));
-        const rawMostLikely = Math.round(top3.reduce((s, c) => s + c.launchMostLikely, 0) / top3.length);
-        const mostLikely = Math.min(65, Math.max(5, rawMostLikely)); // Capped at 65/day for realism
+        const mostLikely = Math.round(top3.reduce((s, c) => s + c.launchMostLikely, 0) / top3.length);
 
-        // Best Case = Professional launch capture (22% of market leader)
-        const rawBestCase = parsed[0].launchBestCase;
-        let bestCase = Math.min(125, Math.max(12, rawBestCase)); // Absolute ceiling of 125/day for Best Case
+        // Best Case = Professional launch capture (30% of market leader)
+        const bestCase = parsed[0].launchBestCase;
         
-        // Ensure Best Case isn't more than 3x Most Likely (Sanity proportionality)
-        if (bestCase > mostLikely * 3) {
-            bestCase = Math.round(mostLikely * 2.5);
-        }
-
         logger.info(`[VETTING] Dynamic Baseline — Top Comp: ${parsed[0].competitorAdjustedDaily}/day, ML=${mostLikely}/day, BC=${bestCase}/day`);
 
         return { mostLikely, bestCase, perCompetitor: parsed };
