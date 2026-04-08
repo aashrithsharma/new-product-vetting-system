@@ -404,11 +404,12 @@ class ScraperEngine {
         for (const k of dimKeys) { if (details[k]) { results.dimensions = cleanText(details[k]); break; } }
         
         // Aggressive table lookup for dimensions if still N/A
-        if (results.dimensions === 'N/A') {
-            $('.a-keyvalue tr, .prodDetTable tr').each((i, el) => {
+        if (results.dimensions === 'N/A' || results.dimensions === '-') {
+            $('.a-keyvalue tr, .prodDetTable tr, #technicalSpecifications_section_1 tr').each((i, el) => {
                 const label = $(el).find('th, td:first-child').text().toLowerCase();
                 const value = $(el).find('td').last().text().trim();
-                if (label.includes('dimensions') || label.includes('size')) {
+                // Match "dimensions", "size", or "lxwxh"
+                if (label.includes('dimensions') || label.includes('size') || label.includes('lxwxh')) {
                     results.dimensions = cleanText(value);
                     return false;
                 }
@@ -418,15 +419,15 @@ class ScraperEngine {
         const weightKeys = ['item weight', 'package weight', 'weight', 'shipping weight'];
         for (const k of weightKeys) { if (details[k]) { results.weight = cleanText(details[k]); break; } }
         
-        if (results.dimensions === 'N/A') {
+        if (results.dimensions === 'N/A' || results.dimensions === '-') {
             // Try multiple structured data fields for dimensions
             const dimVal = structuredData?.product_information?.dimensions
                 || structuredData?.product_information?.item_dimensions;
             if (dimVal) results.dimensions = cleanText(dimVal);
             // Also try parsing from package_dimensions string
-            if (results.dimensions === 'N/A' && structuredData?.product_information?.package_dimensions) {
+            if ((results.dimensions === 'N/A' || results.dimensions === '-') && structuredData?.product_information?.package_dimensions) {
                 const pkgStr = structuredData.product_information.package_dimensions;
-                const mDim = pkgStr.match(/([\d.]+\s*x\s*[\d.]+\s*x\s*[\d.]+\s*(?:inches|in|cm|mm))/i);
+                const mDim = pkgStr.match(/([\d.]+\s*[x×*]\s*[\d.]+\s*[x×*]\s*[\d.]+\s*(?:inches|in|cm|mm))/i);
                 if (mDim) results.dimensions = cleanText(mDim[1]);
             }
         }
@@ -459,9 +460,9 @@ class ScraperEngine {
         }
 
         // Deep Brute-Force Fallback for Weight/Dimensions from body text
-        if (results.dimensions === 'N/A') {
-            // Regex for 12 x 10 x 5 inches, 12" x 10", 12.5 x 1.2 in, etc.
-            const dimRegex = /([\d.]+\s*(?:["']|inches|in|cm|mm)?\s*x\s*[\d.]+\s*(?:["']|inches|in|cm|mm)?\s*x\s*[\d.]+\s*(?:["']|inches|in|cm|mm)?)/i;
+        if (results.dimensions === 'N/A' || results.dimensions === '-') {
+            // Regex for 12 x 10 x 5 inches, support cross-product sign and different units
+            const dimRegex = /([\d.]+\s*(?:["']|inches|in|cm|mm|l|w|h)?\s*[x×*]\s*[\d.]+\s*(?:["']|inches|in|cm|mm|l|w|h)?\s*[x×*]\s*[\d.]+\s*(?:["']|inches|in|cm|mm|l|w|h)?)/i;
             const dimM = fullBodyText.match(dimRegex);
             if (dimM) results.dimensions = cleanText(dimM[1]);
         }

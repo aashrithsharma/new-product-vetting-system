@@ -59,7 +59,7 @@ class VettingEngine {
                                   /^\d+[gG]$/.test(productData.weight);
 
         const missingFields = [];
-        if (productData.dimensions === 'N/A') missingFields.push('Dimensions (LxWxH)');
+        if (productData.dimensions === 'N/A' || productData.dimensions === '-') missingFields.push('Dimensions (LxWxH)');
         if (isSuspiciousWeight) {
             missingFields.push('Item Weight');
             // If suspicious, reset it to N/A so Claude is forced to find it
