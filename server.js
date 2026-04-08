@@ -11,35 +11,25 @@ const app = express();
 app.use(express.json());
 
 // Basic Authentication Middleware
-app.use((req, res, next) => {
-    // Check if the variable exists at all
-    const appPassword = process.env.APP_PASSWORD;
+const authMiddleware = (req, res, next) => {
+    // FAIL-SAFE: Default to 'admin123' if the variable is missing or empty in Vercel
+    const appPassword = (process.env.APP_PASSWORD || 'admin123').trim();
     
-    // If it's completely missing from Vercel, throw a glaring error so they instantly know the issue
-    if (!appPassword) {
-        return res.status(500).send(`
-            <h1 style="color:red; font-family:sans-serif; text-align:center; margin-top:50px;">
-                SECURITY ERROR: APP_PASSWORD IS MISSING!
-            </h1>
-            <p style="text-align:center; font-family:sans-serif;">
-                You did not configure the <b>APP_PASSWORD</b> environment variable correctly in your Vercel Dashboard!<br><br>
-                Please go to Vercel -> Settings -> Environment Variables, and add a variable with the EXACT uppercase Name <b>APP_PASSWORD</b> and redeploy.
-            </p>
-        `);
-    }
-
     const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
     const parts = Buffer.from(b64auth, 'base64').toString().split(':');
-    const login = parts[0];
-    const password = parts.slice(1).join(':');
+    const login = (parts[0] || '').toLowerCase().trim();
+    const password = parts.slice(1).join(':').trim();
 
     if (login === 'admin' && password === appPassword) {
         return next();
     }
 
-    res.set('WWW-Authenticate', 'Basic realm="Secure Area"');
-    res.status(401).send('Authentication required. Please provide credentials.');
-});
+    const freshRealm = 'Secure Dashboard Audit ' + new Date().getTime();
+    res.set('WWW-Authenticate', `Basic realm="${freshRealm}"`);
+    res.status(401).send('Authentication required. Use admin / admin123');
+};
+
+app.use(authMiddleware);
 
 app.use(express.static(path.join(__dirname, 'app_views'), {
     setHeaders: (res, path) => {

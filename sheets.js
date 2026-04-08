@@ -18,14 +18,27 @@ class SheetsService {
                 let cleanCreds = process.env.GOOGLE_CREDENTIALS.trim();
                 if (cleanCreds.startsWith('-')) cleanCreds = cleanCreds.substring(1).trim();
                 credentials = JSON.parse(cleanCreds);
-            } else {
+            } 
+            // Priority 2: Individual keys in env (The Vercel way)
+            else if (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+                credentials = {
+                    client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+                    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+                };
+            }
+            // Priority 3: Local JSON fallback
+            else {
                 let credString = config.google.credentialsPath || '';
                 credString = credString.trim();
                 if (credString.startsWith('-')) credString = credString.substring(1).trim();
                 try {
                     credentials = JSON.parse(credString);
                 } catch (e) {
-                    credentials = JSON.parse(fs.readFileSync(credString, 'utf8'));
+                    if (fs.existsSync(credString)) {
+                        credentials = JSON.parse(fs.readFileSync(credString, 'utf8'));
+                    } else {
+                        throw new Error('Google Credentials not found (missing env vars and file)');
+                    }
                 }
             }
 
@@ -35,11 +48,23 @@ class SheetsService {
             });
             const authClient = await this.auth.getClient();
             this.sheets = google.sheets({ version: 'v4', auth: authClient });
-            logger.info(`[SHEETS] Google Sheets API initialized for Sheet: ${spreadsheetId}`);
+            const saEmail = credentials.client_email || 'Service Account';
+            logger.info(`[SHEETS] Google Sheets API initialized using ${saEmail} for Sheet: ${spreadsheetId}`);
         } catch (error) {
             logger.error(`[SHEETS] Initialization error: ${error.message}`);
             throw error;
         }
+    }
+
+    getServiceAccountEmail() {
+        if (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) return process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+        try {
+            if (process.env.GOOGLE_CREDENTIALS) {
+                const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS.trim().replace(/^-/, ''));
+                return creds.client_email;
+            }
+        } catch (e) {}
+        return 'the configured service account';
     }
 
     async writeResults(results, sheetId, vettingResults = null, ideaName = "Idea") {
