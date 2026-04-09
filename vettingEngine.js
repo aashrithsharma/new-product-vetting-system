@@ -347,7 +347,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         3. USE THE PRE-COMPUTED DISTRIBUTIONS below. These scale relative to the category depth.
            - PRE-COMPUTED mostLikelyUnitsPerDay: ${velocity.mostLikely}  (10% launch market capture)
            - PRE-COMPUTED bestCaseUnitsPerDay:   ${velocity.bestCase}   (30% share capture of market leader)
-        4. DETERMINE Seasonality: "365" for year-round, "245" for seasonal.
+        4. DETERMINE Seasonality: "345" for year-round (non-seasonal), "245" for seasonal.
         5. BASEBALL CATEGORY based on Annual Revenue vs $25M:
            - Less Than a Single: <$250K/yr | Single: $250K-750K | Double: $750K-1.5M | Triple: $1.5M-2.5M | Homerun: >$2.5M
         6. RETURN RATE: estimated % for this product category (e.g., 0.025 = 2.5%).
@@ -386,7 +386,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
           "mostLikelyUnitsPerDay": ${velocity.mostLikely},
           "bestCaseUnitsPerDay": ${velocity.bestCase},
           "salesReasoning": "Pre-computed: badge→daily conversion, BSR multiplier, 5%/$ price elasticity, 30% launch factor applied. Adjustments: ...",
-          "seasonality": "365",
+          "seasonality": "345",
           "baseballCategory": "Single",
           "returnRate": 0.025,
           "formatResearch": "...",
@@ -438,7 +438,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
      */
     runFinancialModeling(targetSellingPrice, seasonalityStr, estimatedUnits, bestCaseUnits = null, claudeReturnRate = null) {
         const price = parseFloat(targetSellingPrice) || 19.99;
-        const days = seasonalityStr === '365' ? 365 : 245;  // Use correct seasonality everywhere
+        const days = seasonalityStr === '245' ? 245 : 345;  // Seasonality: 245, Non-Seasonality: 345
         const referralRate = 0.15;
         const adSpendPct = 0.20;   // Unified: 20% ad spend as per debrief
         // Use Claude's return rate if provided, else default 2.5%
@@ -475,8 +475,8 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         // Generate scenario table up to the realistic best-case limit
         for (let units = 1; units <= tableCeiling; units += 2) {
             const dailyRev = units * price;
-            const annualVolume = units * days;       // Uses correct days (245 or 365)
-            const annualRev = dailyRev * days;       // Uses correct days (245 or 365)
+            const annualVolume = units * days;       // Uses correct days (245 or 345)
+            const annualRev = dailyRev * days;       // Uses correct days (245 or 345)
             const pctOfRev = (annualRev / trailingRev) * 100;
 
             // Baseball categories based on $25M (debrief spec exact thresholds by %)
@@ -520,7 +520,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         const dailyUnits = estimatedUnits || 25;
         const regularPrice = price;
 
-        // Revenue uses correct seasonality days (not hardcoded 365)
+        // Revenue uses correct seasonality days (not hardcoded 345)
         const annualRevenue = dailyUnits * regularPrice * days;
         const avgInvUnits = dailyUnits * 182.5;       // Per debrief: 182.5 days = 0.5 year
         const avgInvValue = avgInvUnits * targetCogs;  // = (Daily_Units × 182.5) × COGS
@@ -571,12 +571,12 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
             analysis: {
                 targetPrice: price || 29.99,
                 estimatedUnitsPerDay: 25,
-                seasonality: "365",
+                seasonality: "345",
                 baseballCategory: "Single",
                 intelligenceBrief: "Local auto-discovery used (AI pending).",
                 formatResearch: "Standard"
             },
-            financials: this.runFinancialModeling(price || 29.99, "365", 25)
+            financials: this.runFinancialModeling(price || 29.99, "345", 25)
         };
     }
 }

@@ -20,7 +20,7 @@ class AntigravityEngine {
         const defaults = {
             six10TrailingRevenue: 28000000,
             adSpendRate: 0.20,
-            sellingDaysPerYear: 365,
+            sellingDaysPerYear: 345,
             returnRate: 0.04,
             avgInventoryHolding: 2.85,
             leadTimeDays: 60,
