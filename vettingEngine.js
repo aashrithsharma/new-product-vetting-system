@@ -350,10 +350,11 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
            - PRE-COMPUTED mostLikelyUnitsPerDay: ${velocity.mostLikely}  (30% launch market capture)
            - PRE-COMPUTED bestCaseUnitsPerDay: ${velocity.bestCase}
         4. DETERMINE Seasonality: "365" (Year-round) or "245" (Seasonal).
-           - ANALYZE DATA: Look at the competitor list. If competitors have high review counts and consistent monthly BSR/Units Sold even in the "off-season", it is a "365" year-round utility.
+           - ANALYZE DATA: Scan the `category` and `keyFeatures` of competitors. If the product is described with professional/industrial utility (e.g. "DJ use", "Commercial grade", "Stage effects", "Septic safe", "Industrial strength"), it is "365".
+           - BSR VALIDATION: If competitors maintain strong monthly sales (BSR < 50,000) for a non-seasonal product, treat as 365.
            - USE THIS RUBRIC:
-             * 365: All consumables (Septic, Fog Juice, Cleaners), professional tools, and items sold every month.
-             * 245: Items with ZERO purpose outside their season (e.g., Snow shovels, Pool chemicals, Holiday decor).
+             * 365: All replenishable consumables, professional tools, and items sold every month.
+             * 245: Items with ZERO purpose outside their specific season.
         5. TARGET PRICE POSITIONING: Six10 is a MID-PREMIUM brand. 
            - Position the target price 10-20% ABOVE the category median. 
            - Focus on matching the PREMIUM tier's features/quality while maintaining a slight price advantage over the highest-priced leader.
@@ -376,6 +377,8 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
                 bsr: d.bsr || 'N/A',
                 boughtPastMonth: d.boughtPastMonth || 'N/A',
                 brand: d.brand,
+                category: d.category || 'N/A',
+                keyFeatures: (d.bulletPoints || '').substring(0, 500), // Richer details for Claude
                 computedBadgeDaily: v?.badgeDaily ?? 'N/A',
                 computedPriceAdjustedDaily: v?.priceAdjustedDaily ?? 'N/A',
                 computedLaunchCapture60pct: v?.launchBestCase ?? 'N/A'
