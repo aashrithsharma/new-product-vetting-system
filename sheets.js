@@ -368,7 +368,7 @@ class SheetsService {
 
             const scenarios = financials?.scenarios || [];
             const regularPrice = financials?.annualMetrics?.regularPrice || (ai?.targetPrice || 22.99);
-            const days365 = 365;
+            const days345 = 345;
             const denominatorRevenue = 25000000;
 
             scenarios.forEach((s, idx) => {
@@ -386,7 +386,7 @@ class SheetsService {
                     s.unitsPerDay,
                     `=IF(COUNTIF($I$${ladderStart}:$I$${ladderEnd}, "Regular Price")>0, SUMIF($I$${ladderStart}:$I$${ladderEnd}, "Regular Price", $F$${ladderStart}:$F$${ladderEnd}), ${s.sellingPrice || regularPrice})`,
                     `=$A${rowNum}*$B${rowNum}`,
-                    s.daysPerYear || days365,
+                    s.daysPerYear || days345,
                     `=$A${rowNum}*$D${rowNum}`,
                     `=$C${rowNum}*$D${rowNum}`,
                     `=$F${rowNum}/${denominatorRevenue}`,
@@ -418,7 +418,7 @@ class SheetsService {
                         u, 
                         `=IF(COUNTIF($I$${ladderStart}:$I$${ladderEnd}, "Regular Price")>0, SUMIF($I$${ladderStart}:$I$${ladderEnd}, "Regular Price", $F$${ladderStart}:$F$${ladderEnd}), ${fallbackPrice})`, 
                         `=$A${rowNum}*$B${rowNum}`, 
-                        365, 
+                        345, 
                         `=$A${rowNum}*$D${rowNum}`, 
                         `=$C${rowNum}*$D${rowNum}`, 
                         `=$F${rowNum}/${denominatorRevenue}`, 
@@ -625,12 +625,12 @@ class SheetsService {
             analysis: {
                 targetPrice: price || 29.99,
                 estimatedUnitsPerDay: 25,
-                seasonality: "365",
+                seasonality: "345",
                 baseballCategory: "Single",
                 intelligenceBrief: "Local auto-discovery used (AI pending).",
                 formatResearch: "Standard"
             },
-            financials: this.runFinancialModeling(price || 29.99, "365", 25)
+            financials: this.runFinancialModeling(price || 29.99, "345", 25)
         };
     }
 }
