@@ -30,7 +30,7 @@ class ExcelExporter {
             adSpendRate: 0.15,
             leadTimeDays: 45,
             supplierToWarehouseShipping: 1.50,
-            sellingDaysPerYear: 345,
+            sellingDaysPerYear: 365,
             six10TrailingRevenue: 25000000 
         };
 
@@ -195,7 +195,7 @@ class ExcelExporter {
             sheet.getCell(r, 10).value = u;
             sheet.getCell(r, 11).value = { formula: `INDEX($F$12:$F$37, MATCH("Regular Price", $I$12:$I$37, 0))` };
             sheet.getCell(r, 12).value = { formula: `J${r}*K${r}` };
-            sheet.getCell(r, 13).value = ctx.sellingDaysPerYear || 345;
+            sheet.getCell(r, 13).value = ctx.sellingDaysPerYear || 365;
             sheet.getCell(r, 14).value = { formula: `L${r}*M${r}` };
             sheet.getCell(r, 15).value = { formula: `N${r}/$M$12` }; 
 
