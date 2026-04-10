@@ -350,12 +350,13 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
            - PRE-COMPUTED mostLikelyUnitsPerDay: ${velocity.mostLikely}  (30% launch market capture)
            - PRE-COMPUTED bestCaseUnitsPerDay: ${velocity.bestCase}
         4. DETERMINE Seasonality: "365" (Year-round) or "245" (Seasonal).
+           - ANALYZE DATA: Look at the competitor list. If competitors have high review counts and consistent monthly BSR/Units Sold even in the "off-season", it is a "365" year-round utility.
            - USE THIS RUBRIC:
-             * 365 (Year-round): Products with monthly/daily utility. includes ALL consumables (Septic, Fog Juice, Cleaners), year-round hobbies, and home staples.
-             * 245 (Seasonal): Products with ZERO utility outside a specific window (e.g., Christmas Lights, Snow Shovels, Pool Heaters, Summer Toys).
-           - IF the product has year-round professional/commercial use (e.g. stage effects, hospitality cleaners), it MUST be 365.
+             * 365: All consumables (Septic, Fog Juice, Cleaners), professional tools, and items sold every month.
+             * 245: Items with ZERO purpose outside their season (e.g., Snow shovels, Pool chemicals, Holiday decor).
         5. TARGET PRICE POSITIONING: Six10 is a MID-PREMIUM brand. 
-           - Position the target price at a 10-20% PREMIUM over the competitor average to reflect professional reliability and brand quality.
+           - Position the target price 10-20% ABOVE the category median. 
+           - Focus on matching the PREMIUM tier's features/quality while maintaining a slight price advantage over the highest-priced leader.
         6. BASEBALL CATEGORY: <$250K=Single, $750K=Double, $1.5M=Triple, >2.5M=Homerun (based on $25M denominator).
            - Less Than a Single: <$250K/yr | Single: $250K-750K | Double: $750K-1.5M | Triple: $1.5M-2.5M | Homerun: >$2.5M
         6. RETURN RATE: estimated % for this product category (e.g., 0.025 = 2.5%).
@@ -393,8 +394,9 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
           "pricingReasoning": "...",
           "mostLikelyUnitsPerDay": ${velocity.mostLikely},
           "bestCaseUnitsPerDay": ${velocity.bestCase},
-          "salesReasoning": "Pre-computed: badge→daily conversion, BSR multiplier, 5%/$ price elasticity, 30% launch factor applied. Adjustments: ...",
+          "salesReasoning": "...",
           "seasonality": "365",
+          "seasonalityReasoning": "Year-round consumable with consistent DJ/professional use as seen in BSR stability.",
           "baseballCategory": "Single",
           "returnRate": 0.025,
           "formatResearch": "...",
