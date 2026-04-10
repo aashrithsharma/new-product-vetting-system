@@ -108,6 +108,7 @@ Missing: ${missingFields.join(', ')}`;
      * Main vetting pipeline for a specific product idea.
      */
     async analyzeIdea(ideaName, competitorData) {
+        this.currentIdeaName = ideaName; // Store for fallback or context if needed
         logger.info(`[VETTING] Starting intelligence analysis for: ${ideaName}`);
 
         if (competitorData && competitorData.length > 50) {
@@ -124,7 +125,8 @@ Missing: ${missingFields.join(', ')}`;
                 analysis.seasonality,
                 analysis.estimatedUnitsPerDay, // most likely
                 analysis.bestCaseUnitsPerDay,  // best case — passed directly from Claude
-                analysis.returnRate            // Claude's category return rate estimate
+                analysis.returnRate,           // Claude's category return rate estimate
+                ideaName                       // Pass for overrides
             );
 
             return {
@@ -346,9 +348,13 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         2. RECOMMEND a Target Selling Price for Six10 — a specific dollar amount positioned between category average and premium tier.
         3. USE THE PRE-COMPUTED DISTRIBUTIONS below. These scale relative to the category depth.
            - PRE-COMPUTED mostLikelyUnitsPerDay: ${velocity.mostLikely}  (30% launch market capture)
-           - PRE-COMPUTED bestCaseUnitsPerDay:   ${velocity.bestCase}   (60% share capture of market leader)
-           - NOTE: Products with year-round utility (Replenishables like Septic, Cleaners) or Commercial/Professional use (Fog Juice, DJ effects, etc.) MUST be "365". Even if they have a seasonal peak, if they sell every month, use "365". Use "245" only for items with near-zero off-season demand.
-        5. BASEBALL CATEGORY based on Annual Revenue vs $25M:
+           - PRE-COMPUTED bestCaseUnitsPerDay: ${velocity.bestCase}
+           - 4. DETERMINE Seasonality: "365" (Year-round) or "245" (Seasonal).
+           - HARD RULE: Consumables (Septic, Fog Juice, Cleaners, Stage FX) MUST be "365".
+           - DEFAULT to "365" if any sales happen off-season. Only use "245" for purely seasonal holiday/weather items.
+        5. TARGET PRICE POSITIONING: Six10 is a MID-PREMIUM brand. 
+           - Always set the target price at least 15-20% HIGHER than the category average to reflect premium branding and quality.
+        6. BASEBALL CATEGORY: <$250K=Single, $750K=Double, $1.5M=Triple, >2.5M=Homerun (based on $25M denominator).
            - Less Than a Single: <$250K/yr | Single: $250K-750K | Double: $750K-1.5M | Triple: $1.5M-2.5M | Homerun: >$2.5M
         6. RETURN RATE: estimated % for this product category (e.g., 0.025 = 2.5%).
         7. FORMAT RESEARCH: RTU vs concentrate, pack size, ingredients, differentiation opportunity.
@@ -436,9 +442,19 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
      * Layer 3: Financial Modeling (Automated Calculation)
      * Back-calculates target COGS for 30% margin and 200% ROIC.
      */
-    runFinancialModeling(targetSellingPrice, seasonalityStr, estimatedUnits, bestCaseUnits = null, claudeReturnRate = null) {
+    runFinancialModeling(targetSellingPrice, seasonalityStr, estimatedUnits, bestCaseUnits = null, claudeReturnRate = null, ideaName = null) {
         const price = parseFloat(targetSellingPrice) || 19.99;
-        const days = seasonalityStr === '245' ? 245 : 365;  // Seasonality: 245, Non-Seasonality: 365 (Replenishables = 365)
+        let days = (seasonalityStr === '245' || seasonalityStr === 245) ? 245 : 365;  
+
+        // --- HARD SEASONALITY OVERRIDE (Safety Net) ---
+        // If the category involves professional hospitality, staging, or industrial replenishables
+        const normalizedIdea = String(ideaName || '').toLowerCase();
+        const yearRoundKeywords = ['septic', 'fog', 'juice', 'cleaner', 'detergent', 'soap', 'treatment', 'professional', 'commercial', 'liquid', 'fluids', 'industrial'];
+        if (yearRoundKeywords.some(k => normalizedIdea.includes(k))) {
+            days = 365;
+            logger.info(`[VETTING] Applied hard 365-day override for keyword match: ${normalizedIdea}`);
+        }
+
         const referralRate = 0.15;
         const adSpendPct = 0.20;   // Unified: 20% ad spend as per debrief
         // Use Claude's return rate if provided, else default 2.5%
@@ -576,7 +592,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
                 intelligenceBrief: "Local auto-discovery used (AI pending).",
                 formatResearch: "Standard"
             },
-            financials: this.runFinancialModeling(price || 29.99, "365", 25)
+            financials: this.runFinancialModeling(price || 29.99, "365", 25, null, null, ideaName)
         };
     }
 }
