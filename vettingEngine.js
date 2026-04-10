@@ -475,8 +475,8 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         // Generate scenario table up to the realistic best-case limit
         for (let units = 1; units <= tableCeiling; units += 2) {
             const dailyRev = units * price;
-            const annualVolume = units * days;       // Uses correct days (245 or 345)
-            const annualRev = dailyRev * days;       // Uses correct days (245 or 345)
+            const annualVolume = units * days;       // Uses correct days (245 or 365)
+            const annualRev = dailyRev * days;       // Uses correct days (245 or 365)
             const pctOfRev = (annualRev / trailingRev) * 100;
 
             // Baseball categories based on $25M (debrief spec exact thresholds by %)
@@ -520,7 +520,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         const dailyUnits = estimatedUnits || 25;
         const regularPrice = price;
 
-        // Revenue uses correct seasonality days (not hardcoded 345)
+        // Revenue uses correct seasonality days (not hardcoded 365)
         const annualRevenue = dailyUnits * regularPrice * days;
         const avgInvUnits = dailyUnits * 182.5;       // Per debrief: 182.5 days = 0.5 year
         const avgInvValue = avgInvUnits * targetCogs;  // = (Daily_Units × 182.5) × COGS
