@@ -294,10 +294,10 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
                 bsrAdjusted,
                 competitorAdjustedDaily,
                 // Dynamic Market Capture Factors (SIX10 RELATIVE CAPTURE)
-                // ML: ~10% of market share (Conservative Entry)
-                // BC: ~30% of market leader share (Strong Launch)
-                launchMostLikely: Math.max(1, Math.round(competitorAdjustedDaily * 0.10)), 
-                launchBestCase:   Math.max(1, Math.round(competitorAdjustedDaily * 0.30)) 
+                // ML: ~30% of market share (Standard Launch) - Updated for manual alignment
+                // BC: ~60% of market leader share (Aggressive Launch) - Updated for manual alignment
+                launchMostLikely: Math.max(1, Math.round(competitorAdjustedDaily * 0.30)), 
+                launchBestCase:   Math.max(1, Math.round(competitorAdjustedDaily * 0.60)) 
             };
         }).filter(Boolean);
 
@@ -345,9 +345,10 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         1. CLASSIFY each competitor as Budget, Mid-Range, or Premium based on price, reviews, listing quality.
         2. RECOMMEND a Target Selling Price for Six10 — a specific dollar amount positioned between category average and premium tier.
         3. USE THE PRE-COMPUTED DISTRIBUTIONS below. These scale relative to the category depth.
-           - PRE-COMPUTED mostLikelyUnitsPerDay: ${velocity.mostLikely}  (10% launch market capture)
-           - PRE-COMPUTED bestCaseUnitsPerDay:   ${velocity.bestCase}   (30% share capture of market leader)
-        4. DETERMINE Seasonality: "365" for year-round (non-seasonal), "245" for seasonal.
+           - PRE-COMPUTED mostLikelyUnitsPerDay: ${velocity.mostLikely}  (30% launch market capture)
+           - PRE-COMPUTED bestCaseUnitsPerDay:   ${velocity.bestCase}   (60% share capture of market leader)
+        4. DETERMINE Seasonality: "365" for year-round products, "245" for seasonal. 
+           - NOTE: Replenishable household/industrial consumables (e.g., septic treatments, cleaners, laundry) MUST be "365".
         5. BASEBALL CATEGORY based on Annual Revenue vs $25M:
            - Less Than a Single: <$250K/yr | Single: $250K-750K | Double: $750K-1.5M | Triple: $1.5M-2.5M | Homerun: >$2.5M
         6. RETURN RATE: estimated % for this product category (e.g., 0.025 = 2.5%).
@@ -369,13 +370,13 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
                 brand: d.brand,
                 computedBadgeDaily: v?.badgeDaily ?? 'N/A',
                 computedPriceAdjustedDaily: v?.priceAdjustedDaily ?? 'N/A',
-                computedLaunchCapture30pct: v?.launchDaily ?? 'N/A'
+                computedLaunchCapture60pct: v?.launchBestCase ?? 'N/A'
             };
         }), null, 2)}
 
         CONSTRAINTS:
         - mostLikelyUnitsPerDay must be within ±15% of ${velocity.mostLikely} (range: ${Math.floor(velocity.mostLikely * 0.85)}–${Math.ceil(velocity.mostLikely * 1.15)})
-        - bestCaseUnitsPerDay must be within ±15% of ${velocity.bestCase} (range: ${Math.floor(velocity.bestCase * 0.85)}–${Math.ceil(velocity.bestCase * 1.15)}), minimum 25.
+        - bestCaseUnitsPerDay must be within ±15% of ${velocity.bestCase} (range: ${Math.floor(velocity.bestCase * 0.85)}–${Math.ceil(velocity.bestCase * 1.15)}), minimum 41.
         - If you adjust outside this range, explain clearly in salesReasoning why the data justifies it.
 
         OUTPUT: Respond with ONLY valid raw JSON — no markdown, no explanation, no code blocks.
@@ -438,7 +439,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
      */
     runFinancialModeling(targetSellingPrice, seasonalityStr, estimatedUnits, bestCaseUnits = null, claudeReturnRate = null) {
         const price = parseFloat(targetSellingPrice) || 19.99;
-        const days = seasonalityStr === '245' ? 245 : 365;  // Seasonality: 245, Non-Seasonality: 365
+        const days = seasonalityStr === '245' ? 245 : 365;  // Seasonality: 245, Non-Seasonality: 365 (Replenishables = 365)
         const referralRate = 0.15;
         const adSpendPct = 0.20;   // Unified: 20% ad spend as per debrief
         // Use Claude's return rate if provided, else default 2.5%
@@ -465,8 +466,8 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         const trailingRev = 25000000; // $25M denominator per debrief
 
         // Best case: use Claude's estimate if provided, based purely on the competitive data
-        const rawBestCase = bestCaseUnits || Math.max((estimatedUnits || 25) * 2, 25);
-        const clampedBestCase = Math.max(rawBestCase, 25); 
+        const rawBestCase = bestCaseUnits || Math.max((estimatedUnits || 25) * 2, 41);
+        const clampedBestCase = Math.max(rawBestCase, 41); 
         
         // Find the closest odd number to bestCase for the table ceiling
         let tableCeiling = Math.round(clampedBestCase);
