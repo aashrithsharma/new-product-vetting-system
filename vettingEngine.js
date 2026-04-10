@@ -129,6 +129,14 @@ Missing: ${missingFields.join(', ')}`;
                 ideaName                       // Pass for overrides
             );
 
+            // --- FINAL SEASONALITY ENFORCEMENT ---
+            // Ensure analysis.seasonality reflects the corrected 'days' count for the brief
+            analysis.seasonality = financials.annualMetrics.dailyUnits > 0 ? financials.dailyUnits_daysPerYear : analysis.seasonality;
+            // Actually, just force the analysis object's string directly if financials was corrected
+            if (financials.annualMetrics.dailyUnits_daysPerYear) {
+                 analysis.seasonality = String(financials.annualMetrics.dailyUnits_daysPerYear);
+            }
+
             return {
                 ideaName,
                 analysis,
@@ -350,11 +358,11 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
            - PRE-COMPUTED mostLikelyUnitsPerDay: ${velocity.mostLikely}  (30% launch market capture)
            - PRE-COMPUTED bestCaseUnitsPerDay: ${velocity.bestCase}
         4. DETERMINE Seasonality: "365" (Year-round) or "245" (Seasonal).
-           - ANALYZE DATA: Scan the `category` and `keyFeatures` of competitors. If the product is described with professional/industrial utility (e.g. "DJ use", "Commercial grade", "Stage effects", "Septic safe", "Industrial strength"), it is "365".
-           - BSR VALIDATION: If competitors maintain strong monthly sales (BSR < 50,000) for a non-seasonal product, treat as 365.
-           - USE THIS RUBRIC:
-             * 365: All replenishable consumables, professional tools, and items sold every month.
-             * 245: Items with ZERO purpose outside their specific season.
+           - HEAVY DEFAULT: Most products analyzed for Six10 Ventures are year-round (365). 
+           - EXCEPTION (245): Only use 245 for rare, strictly seasonal items with NEAR-ZERO off-season demand (e.g. Christmas lights).
+           - ANALYZE DATA: Scan `category` and `keyFeatures`. Categorize as 365 if there is ANY professional/replenishable utility.
+           - BSR VALIDATION: If competitors show high sales velocity in the current "off-season," it must be 365.
+           - If unsure, DEFAULT to 365.
         5. TARGET PRICE POSITIONING: Six10 is a MID-PREMIUM brand. 
            - Position the target price 10-20% ABOVE the category median. 
            - Focus on matching the PREMIUM tier's features/quality while maintaining a slight price advantage over the highest-priced leader.
@@ -453,13 +461,26 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         const price = parseFloat(targetSellingPrice) || 19.99;
         let days = (seasonalityStr === '245' || seasonalityStr === 245) ? 245 : 365;  
 
-        // --- INTELLIGENT SEASONALITY OVERRIDE ---
-        // We only override to 365 for known replenishment categories that Claude might guess wrong.
+        // --- SEMI-HARD SEASONALITY OVERRIDE (Six10 Directive) ---
+        // User wants MOST things to be 365. 245 is ONLY for extreme seasonal decor/holiday.
         const normalizedIdea = String(ideaName || '').toLowerCase();
-        const consumables = ['septic', 'fog', 'juice', 'cleaner', 'detergent', 'soap', 'treatment'];
-        if (days === 245 && consumables.some(k => normalizedIdea.includes(k))) {
+        
+        // Strict 245 list: things that truly stop selling
+        const strictSeasonal = ['christmas', 'halloween', 'thanksgiving', 'hanukkah', 'snowflake', 'santa'];
+        const isStrictlySeasonal = strictSeasonal.some(k => normalizedIdea.includes(k));
+
+        // Consumables and "Professionally" year-round items
+        const yearRoundKeywords = ['septic', 'fog', 'juice', 'cleaner', 'detergent', 'soap', 'treatment', 'pool', 'test', 'reagent', 'professional', 'industrial', 'commercial', 'liquid', 'fluids'];
+        
+        if (!isStrictlySeasonal) {
+            // If it's not strictly a holiday item, default to 365 or check keywords
+            if (days === 245) {
+                days = 365;
+                logger.info(`[VETTING] Six10 Directive: Overriding suspected seasonal [${normalizedIdea}] to 365 days.`);
+            }
+        } else if (yearRoundKeywords.some(k => normalizedIdea.includes(k))) {
             days = 365;
-            logger.info(`[VETTING] Corrected seasonality to 365 for known consumable: ${normalizedIdea}`);
+            logger.info(`[VETTING] Corrected seasonality for Year-Round keyword match: ${normalizedIdea}`);
         }
 
         const referralRate = 0.15;
@@ -579,7 +600,8 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
                 netMarginAfterAdsPct,
                 annualContributionMargin,
                 roic,
-                leadTimeDays: 60
+                leadTimeDays: 60,
+                dailyUnits_daysPerYear: days // Internal flag for the brief
             },
             scenarios
         };
