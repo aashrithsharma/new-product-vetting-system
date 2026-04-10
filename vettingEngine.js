@@ -462,26 +462,27 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         const price = parseFloat(targetSellingPrice) || 19.99;
         let days = (seasonalityStr === '245' || seasonalityStr === 245) ? 245 : 365;  
 
-        // --- SEMI-HARD SEASONALITY OVERRIDE (Six10 Directive) ---
-        // User wants MOST things to be 365. 245 is ONLY for extreme seasonal decor/holiday.
+        // --- INTELLIGENT SEASONALITY OVERRIDE (Six10 Directive) ---
+        // Most items are 365. 245 is allowed ONLY for true seasonal categories.
         const normalizedIdea = String(ideaName || '').toLowerCase();
         
-        // Strict 245 list: things that truly stop selling
-        const strictSeasonal = ['christmas', 'halloween', 'thanksgiving', 'hanukkah', 'snowflake', 'santa'];
-        const isStrictlySeasonal = strictSeasonal.some(k => normalizedIdea.includes(k));
-
-        // Consumables and "Professionally" year-round items
-        const yearRoundKeywords = ['septic', 'fog', 'juice', 'cleaner', 'detergent', 'soap', 'treatment', 'pool', 'test', 'reagent', 'professional', 'industrial', 'commercial', 'liquid', 'fluids'];
+        // Items that SHOULD always be 365 (Consumables / Professional)
+        const always365 = ['septic', 'fog', 'juice', 'cleaner', 'reagent', 'test', 'detergent', 'soap', 'treatment', 'professional', 'industrial'];
         
-        if (!isStrictlySeasonal) {
-            // If it's not strictly a holiday item, default to 365 or check keywords
-            if (days === 245) {
+        // Items that are ALLOWED to be 245 (strictly seasonal)
+        const allowed245 = ['holiday', 'christmas', 'halloween', 'thanksgiving', 'hanukkah', 'snow', 'santa', 'gift', 'winter', 'beach', 'summer'];
+
+        if (days === 245) {
+            // Force 365 if it's a known year-round consumable
+            if (always365.some(k => normalizedIdea.includes(k))) {
                 days = 365;
-                logger.info(`[VETTING] Six10 Directive: Overriding suspected seasonal [${normalizedIdea}] to 365 days.`);
+                logger.info(`[VETTING] Correcting consumable [${normalizedIdea}] to 365 days.`);
+            } 
+            // Otherwise, only keep 245 if the idea matches a seasonal keyword
+            else if (!allowed245.some(k => normalizedIdea.includes(k))) {
+                days = 365; // Default back to 365 for everything else
+                logger.info(`[VETTING] Six10 Safety: Overriding suspected seasonal [${normalizedIdea}] to 365 days.`);
             }
-        } else if (yearRoundKeywords.some(k => normalizedIdea.includes(k))) {
-            days = 365;
-            logger.info(`[VETTING] Corrected seasonality for Year-Round keyword match: ${normalizedIdea}`);
         }
 
         const referralRate = 0.15;
