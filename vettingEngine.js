@@ -347,8 +347,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         3. USE THE PRE-COMPUTED DISTRIBUTIONS below. These scale relative to the category depth.
            - PRE-COMPUTED mostLikelyUnitsPerDay: ${velocity.mostLikely}  (30% launch market capture)
            - PRE-COMPUTED bestCaseUnitsPerDay:   ${velocity.bestCase}   (60% share capture of market leader)
-        4. DETERMINE Seasonality: "365" for year-round products, "245" for seasonal. 
-           - NOTE: Replenishable household/industrial consumables (e.g., septic treatments, cleaners, laundry) MUST be "365".
+           - NOTE: Products with year-round utility (Replenishables like Septic, Cleaners) or Commercial/Professional use (Fog Juice, DJ effects, etc.) MUST be "365". Even if they have a seasonal peak, if they sell every month, use "365". Use "245" only for items with near-zero off-season demand.
         5. BASEBALL CATEGORY based on Annual Revenue vs $25M:
            - Less Than a Single: <$250K/yr | Single: $250K-750K | Double: $750K-1.5M | Triple: $1.5M-2.5M | Homerun: >$2.5M
         6. RETURN RATE: estimated % for this product category (e.g., 0.025 = 2.5%).
