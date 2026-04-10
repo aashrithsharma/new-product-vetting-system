@@ -88,3 +88,24 @@ Whenever adding features, strictly follow this procedure:
 2. Issue the sequence: `git add .` -> `git commit -m "Your Explicit Change Summary"` -> `git push origin master`.
 3. *WARNING:* Wait at least 90 seconds for your GitHub sync to fully propagate into a verified Vercel backend build. Check the Vercel dashboard completely for the "Ready" green light icon. 
 4. Hard Refresh the browser. Proceed.
+
+---
+
+## 🗂 SECTION 5: Data Parity & AI Healing (Zero Dash Policy)
+
+As of the latest production update, the system enforces a strict "Zero Dash" policy to ensure clinical-grade reporting.
+
+1. **Automated AI Healing**
+   - If Amazon's technical specifications are missing Dimensions (LxWxH) or Weight, the engine automatically triggers a secondary "Healing" phase.
+   - Claude AI is instructed to use internal product knowledge to provide a **Realistic Estimate** based on the product title and weight.
+   - **Result:** You will never see a `-` or `N/A` in your final professional reports.
+
+2. **1:1 Data Parity**
+   - The Competitive Comparison (Rows 1-11) is now perfectly synchronized between the system intelligence and your Google Sheets.
+   - Every competitor is guaranteed to have: Brand, ASIN, Selling Price, Stars, Reviews, Units Sold (or BSR), Dimensions, and Weight.
+
+3. **Validation**
+   - If you see a value marked with `(est)`, it means the AI calculated this based on industry standards because the Amazon listing was incomplete.
+
+--- 
+**End of Document**
