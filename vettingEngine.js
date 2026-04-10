@@ -348,6 +348,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         logger.info(`[VETTING] Pre-computed velocity: mostLikely=${velocity.mostLikely}/day, bestCase=${velocity.bestCase}/day`);
 
         const prompt = `
+        // BRAND POSITIONING: SIX10 VENTURES = MID-PREMIUM TIER
         You are an expert Amazon product analyst for Six10 Ventures, a moderate-to-premium Amazon brand.
         Analyze the competitor data below for the product idea: "${ideaName}".
 
