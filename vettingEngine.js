@@ -349,11 +349,13 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         3. USE THE PRE-COMPUTED DISTRIBUTIONS below. These scale relative to the category depth.
            - PRE-COMPUTED mostLikelyUnitsPerDay: ${velocity.mostLikely}  (30% launch market capture)
            - PRE-COMPUTED bestCaseUnitsPerDay: ${velocity.bestCase}
-           - 4. DETERMINE Seasonality: "365" (Year-round) or "245" (Seasonal).
-           - HARD RULE: Consumables (Septic, Fog Juice, Cleaners, Stage FX) MUST be "365".
-           - DEFAULT to "365" if any sales happen off-season. Only use "245" for purely seasonal holiday/weather items.
+        4. DETERMINE Seasonality: "365" (Year-round) or "245" (Seasonal).
+           - USE THIS RUBRIC:
+             * 365 (Year-round): Products with monthly/daily utility. includes ALL consumables (Septic, Fog Juice, Cleaners), year-round hobbies, and home staples.
+             * 245 (Seasonal): Products with ZERO utility outside a specific window (e.g., Christmas Lights, Snow Shovels, Pool Heaters, Summer Toys).
+           - IF the product has year-round professional/commercial use (e.g. stage effects, hospitality cleaners), it MUST be 365.
         5. TARGET PRICE POSITIONING: Six10 is a MID-PREMIUM brand. 
-           - Always set the target price at least 15-20% HIGHER than the category average to reflect premium branding and quality.
+           - Position the target price at a 10-20% PREMIUM over the competitor average to reflect professional reliability and brand quality.
         6. BASEBALL CATEGORY: <$250K=Single, $750K=Double, $1.5M=Triple, >2.5M=Homerun (based on $25M denominator).
            - Less Than a Single: <$250K/yr | Single: $250K-750K | Double: $750K-1.5M | Triple: $1.5M-2.5M | Homerun: >$2.5M
         6. RETURN RATE: estimated % for this product category (e.g., 0.025 = 2.5%).
@@ -446,13 +448,13 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         const price = parseFloat(targetSellingPrice) || 19.99;
         let days = (seasonalityStr === '245' || seasonalityStr === 245) ? 245 : 365;  
 
-        // --- HARD SEASONALITY OVERRIDE (Safety Net) ---
-        // If the category involves professional hospitality, staging, or industrial replenishables
+        // --- INTELLIGENT SEASONALITY OVERRIDE ---
+        // We only override to 365 for known replenishment categories that Claude might guess wrong.
         const normalizedIdea = String(ideaName || '').toLowerCase();
-        const yearRoundKeywords = ['septic', 'fog', 'juice', 'cleaner', 'detergent', 'soap', 'treatment', 'professional', 'commercial', 'liquid', 'fluids', 'industrial'];
-        if (yearRoundKeywords.some(k => normalizedIdea.includes(k))) {
+        const consumables = ['septic', 'fog', 'juice', 'cleaner', 'detergent', 'soap', 'treatment'];
+        if (days === 245 && consumables.some(k => normalizedIdea.includes(k))) {
             days = 365;
-            logger.info(`[VETTING] Applied hard 365-day override for keyword match: ${normalizedIdea}`);
+            logger.info(`[VETTING] Corrected seasonality to 365 for known consumable: ${normalizedIdea}`);
         }
 
         const referralRate = 0.15;
