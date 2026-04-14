@@ -88,9 +88,10 @@ TASK: Extract or Derive the EXACT technical specifications.
 CRITICAL RULES:
 1. Look for "Product Dimensions", "Package Dimensions", or weight values in the technical tables first.
 2. Look for "Size:", "Item Weight:", or "Dimensions:" in the bullet points or product description.
-3. IF DATA IS MISSING: Provide a HIGH-PRECISION ESTIMATE based on the product category and your market knowledge for this specific brand/item. 
-4. DO NOT use "N/A" or "-" in your response. Every field must have a numerical value with units.
+3. IF DATA IS MISSING OR OBSCURED: Provide a LOGICAL ESTIMATE based on the product category and your market knowledge for this specific brand/item. 
+4. DO NOT use "N/A", "-", or ANY conversational text (e.g. "I cannot determine"). Every field must be a valid string or number.
 5. If the monthly sales volume (e.g. "500+ bought in past month") is present but garbled, extract it clearly.
+6. MANDATORY: Respond with ONLY THE JSON. NO APOLOGIES. NO EXPLANATIONS.
 
 Return ONLY a JSON object: {"dimensions": "X.X x Y.Y x Z.Z inches", "weight": "X.X lbs", "boughtPastMonth": "X+ bought in past month"}
 
@@ -118,9 +119,12 @@ ${snip}`;
                 };
             }
 
-            if (healed.dimensions && healed.dimensions !== 'N/A' && healed.dimensions !== '-') productData.dimensions = healed.dimensions;
-            if (healed.weight && healed.weight !== 'N/A' && healed.weight !== '-') productData.weight = healed.weight;
-            if (healed.boughtPastMonth && healed.boughtPastMonth !== '-') productData.boughtPastMonth = healed.boughtPastMonth;
+            // CLEANER: Ensure Claude didn't sneak in conversational "Unable to determine" text
+            const isInvalid = (val) => !val || val.toLowerCase().includes('unable') || val.toLowerCase().includes('determine') || val === 'N/A' || val === '-';
+
+            if (!isInvalid(healed.dimensions)) productData.dimensions = healed.dimensions;
+            if (!isInvalid(healed.weight)) productData.weight = healed.weight;
+            if (!isInvalid(healed.boughtPastMonth)) productData.boughtPastMonth = healed.boughtPastMonth;
 
             logger.info(`[VETTING] HEAL SUCCESS: ${productData.asin} dimensions: ${productData.dimensions}, weight: ${productData.weight}`);
             return productData;

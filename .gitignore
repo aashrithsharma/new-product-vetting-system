@@ -5,3 +5,5 @@ archive/
 outputs/
 credentials/*.json
 .DS_Store
+.vercel
+.env*.local
