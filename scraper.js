@@ -3,12 +3,49 @@ const config = require('./config');
 const cheerio = require('cheerio');
 const axios = require('axios');
 
-function cleanText(str) {
-    if (!str || str === 'N/A') return str;
-    return str
-        .replace(/[\u200e\u200f\u200b\u200c\u200d\u00ad\ufeff\u2022\u2605\u2b50]/g, '') // Added star icons to clean
+function cleanText(text) {
+    if (!text) return 'N/A';
+    return text.toString()
+        .replace(/[\u200e\u200f\u200b\u200c\u200d\u00ad\ufeff\u2022\u2605\u2b50]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim() || 'N/A';
+}
+
+function normalizeDimensions(dim) {
+    if (!dim || dim === 'N/A' || dim === '-') return 'N/A';
+    
+    // 1. Basic cleanup: standardize separators
+    let clean = dim.toLowerCase()
+        .replace(/[×*X]/g, ' x ')
         .replace(/\s+/g, ' ')
         .trim();
+    
+    // 2. Identify garbled patterns like "82x3lx3" or "4x86X6"
+    // If it lacks units AND spaces AND dots, it's likely garbage from a bad table parse
+    const isGarbage = (clean.match(/^\d+x\d+x\d+[a-z]?$/i) || clean.match(/^\d+x\d+$/i)) && 
+                     !clean.includes('.') && !clean.includes(' ') && !clean.includes('in');
+    
+    if (isGarbage) return 'N/A';
+
+    // 3. Fix minor alignment issues
+    clean = clean.replace(/(\d+)\s*x\s*(\d+)\s*x\s*(\d+)/g, '$1 x $2 x $3');
+    clean = clean.replace(/(\d+)\s*x\s*(\d+)/g, '$1 x $2');
+
+    // 4. Append inches if missing
+    if (clean.includes(' x ') && !clean.includes('in') && !clean.includes('"') && !clean.includes('cm') && !clean.includes('mm')) {
+        clean += ' inches';
+    }
+
+    return clean || 'N/A';
+}
+
+function normalizeWeight(w) {
+    if (!w || w === 'N/A') return 'N/A';
+    let clean = w.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (clean.match(/^\d+\.?\d*$/)) {
+        clean += ' lbs';
+    }
+    return clean;
 }
 
 class ScraperEngine {
@@ -48,7 +85,7 @@ class ScraperEngine {
 
     async getHTMLFromScraperAPI(asin, domain, render = false) {
         let attempts = 0;
-        const maxAttempts = 3;
+        const maxAttempts = 5; // Increased for peak reliability
         const apiKey = process.env.SCRAPERAPI_KEY;
         const targetUrl = `https://${domain}/dp/${asin}?th=1&psc=1&language=en_US&currency=USD&gl=US`;
 
@@ -63,7 +100,7 @@ class ScraperEngine {
                     url = targetUrl;
                 }
                 const res = await axios.get(url, { 
-                    timeout: render ? 90000 : 45000,
+                    timeout: render ? 120000 : 60000, // Slightly longer timeouts
                     headers: apiKey ? {} : {
                         'User-Agent': config.scraper.userAgentPool[0] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                     }
@@ -72,12 +109,16 @@ class ScraperEngine {
                     return res.data;
                 }
             } catch (e) {
-                logger.warn(`[${asin}] Error fetching HTML (render=${render}): ${e.message}`);
-                if (attempts < maxAttempts) {
-                    const delay = Math.pow(2, attempts) * 1000;
+                const isRetryable = e.status === 500 || e.code === 'ECONNRESET' || e.code === 'ETIMEDOUT' || e.message.includes('timeout') || e.message.includes('socket');
+                if (isRetryable && attempts < maxAttempts) {
+                    const delay = Math.pow(2, attempts) * 1000 + (Math.random() * 2000); 
+                    if (attempts > 3) {
+                        logger.warn(`[${asin}] Scraper pressure detected. Optimizing connection (Retry ${attempts}/${maxAttempts})...`);
+                    }
                     await new Promise(r => setTimeout(r, delay));
+                    continue;
                 }
-                continue;
+                break; 
             }
         }
         return null;
@@ -204,9 +245,25 @@ class ScraperEngine {
         const details = {};
         const cleanKey = (k) => k.toLowerCase().replace(/[:\u2022\u200b]/g, '').trim();
 
-        $('#productDetails_techSpec_section_1 tr, #table_productDetails_db_sections tr, .a-expander-content table tr').each((i, el) => {
-            const th = $(el).find('th').text().trim();
-            const td = $(el).find('td').text().trim();
+        $('#productDetails_techSpec_section_1 tr, #productDetails_techSpec_section_2 tr, #table_productDetails_db_sections tr, .a-expander-content table tr, .prodDetSectionEntry, #technicalSpecifications_section_1 tr').each((i, el) => {
+            let th, td;
+            if ($(el).is('tr')) {
+                th = $(el).find('th').text().trim();
+                td = $(el).find('td').text().trim();
+            } else {
+                // For .prodDetSectionEntry which is often div-based
+                th = $(el).find('.prodDetSection_label').text().trim();
+                td = $(el).find('.prodDetSection_value').text().trim();
+            }
+            if (!th) {
+                // Secondary check for key:value pairs in generic table cells
+                const text = $(el).text();
+                if (text.includes(':')) {
+                    const parts = text.split(':');
+                    th = parts[0];
+                    td = parts.slice(1).join(':');
+                }
+            }
             if (th && td) details[cleanKey(th)] = cleanText(td);
         });
 
@@ -401,47 +458,52 @@ class ScraperEngine {
         // PROJECT 2 EXTENSIONS: Dimensions, Weight
         // PROJECT 2 EXTENSIONS: Dimensions, Weight
         const dimKeys = ['product dimensions', 'item dimensions lxwxh', 'package dimensions', 'dimensions', 'size', 'item dimensions'];
-        for (const k of dimKeys) { if (details[k]) { results.dimensions = cleanText(details[k]); break; } }
+        for (const k of dimKeys) { if (details[k]) { results.dimensions = normalizeDimensions(details[k]); break; } }
         
         // Aggressive table lookup for dimensions if still N/A
         if (results.dimensions === 'N/A' || results.dimensions === '-') {
             $('.a-keyvalue tr, .prodDetTable tr, #technicalSpecifications_section_1 tr').each((i, el) => {
                 const label = $(el).find('th, td:first-child').text().toLowerCase();
                 const value = $(el).find('td').last().text().trim();
-                // Match "dimensions", "size", or "lxwxh"
                 if (label.includes('dimensions') || label.includes('size') || label.includes('lxwxh')) {
-                    results.dimensions = cleanText(value);
+                    results.dimensions = normalizeDimensions(value);
                     return false;
                 }
             });
         }
         
         const weightKeys = ['item weight', 'package weight', 'weight', 'shipping weight'];
-        for (const k of weightKeys) { if (details[k]) { results.weight = cleanText(details[k]); break; } }
+        for (const k of weightKeys) { if (details[k]) { results.weight = normalizeWeight(details[k]); break; } }
         
         if (results.dimensions === 'N/A' || results.dimensions === '-') {
             // Try multiple structured data fields for dimensions
             const dimVal = structuredData?.product_information?.dimensions
                 || structuredData?.product_information?.item_dimensions;
-            if (dimVal) results.dimensions = cleanText(dimVal);
-            // Also try parsing from package_dimensions string
-            if ((results.dimensions === 'N/A' || results.dimensions === '-') && structuredData?.product_information?.package_dimensions) {
-                const pkgStr = structuredData.product_information.package_dimensions;
-                const mDim = pkgStr.match(/([\d.]+\s*[x×*]\s*[\d.]+\s*[x×*]\s*[\d.]+\s*(?:inches|in|cm|mm))/i);
-                if (mDim) results.dimensions = cleanText(mDim[1]);
+            if (dimVal) results.dimensions = normalizeDimensions(dimVal);
+        }
+        if (results.dimensions === 'N/A' || results.dimensions === '-') {
+            // Check every detail key for things containing "dimension" or "size"
+            for (const key in details) {
+                if (key.includes('dimension') || key.includes('size')) {
+                    const val = details[key];
+                    if (val.match(/\d+\s*[x×*]\s*\d+/) || val.match(/\d+\.?\d*/)) {
+                        results.dimensions = normalizeDimensions(val);
+                        break;
+                    }
+                }
             }
         }
         if (results.weight === 'N/A') {
             // Try structured item_weight, then parse from package_dimensions string
             const weightVal = structuredData?.product_information?.weight
                 || structuredData?.product_information?.item_weight;
-            if (weightVal) results.weight = cleanText(weightVal);
+            if (weightVal) results.weight = normalizeWeight(weightVal);
             if (results.weight === 'N/A' && structuredData?.product_information?.package_dimensions) {
                 const pkgStr = structuredData.product_information.package_dimensions;
                 // Require actual digit(s) before unit; avoid matching ".g" or ".oz"
                 const mW = pkgStr.match(/;\s*(\d+\.?\d*\s*(?:ounces|oz|pounds|lbs|grams|kg))/i)
                     || pkgStr.match(/(\d+\.?\d*\s*(?:ounces|oz|pounds|lbs|grams|kg))/i);
-                if (mW) results.weight = cleanText(mW[1].trim());
+                if (mW) results.weight = normalizeWeight(mW[1].trim());
             }
         }
 
@@ -453,7 +515,7 @@ class ScraperEngine {
                 const label = $(el).find('th, td:first-child').text().toLowerCase();
                 const value = $(el).find('td').last().text().trim();
                 if (weightKeys.some(k => label.includes(k))) {
-                    results.weight = cleanText(value);
+                    results.weight = normalizeWeight(value);
                     return false;
                 }
             });
@@ -464,7 +526,7 @@ class ScraperEngine {
             // Regex for 12 x 10 x 5 inches, support cross-product sign and different units
             const dimRegex = /([\d.]+\s*(?:["']|inches|in|cm|mm|l|w|h)?\s*[x×*]\s*[\d.]+\s*(?:["']|inches|in|cm|mm|l|w|h)?\s*[x×*]\s*[\d.]+\s*(?:["']|inches|in|cm|mm|l|w|h)?)/i;
             const dimM = fullBodyText.match(dimRegex);
-            if (dimM) results.dimensions = cleanText(dimM[1]);
+            if (dimM) results.dimensions = normalizeDimensions(dimM[1]);
         }
         
         if (results.weight === 'N/A') {
@@ -472,7 +534,7 @@ class ScraperEngine {
             // Use longer units for body-wide brute force
             const weightRegex = /\b(\d+\.?\d*\s*(?:pounds|lbs|ounces|oz|grams|kg|pounds|lb))\b/i;
             const weightM = fullBodyText.match(weightRegex);
-            if (weightM) results.weight = cleanText(weightM[1]);
+            if (weightM) results.weight = normalizeWeight(weightM[1]);
         }
 
         // PROJECT 2 EXTENSIONS: "Bought in past month" Badge
@@ -514,7 +576,20 @@ class ScraperEngine {
             if (b && !b.toLowerCase().includes('make sure this fits')) bullets.push(b);
         });
         results.bulletPoints = bullets.join(' | ');
-        results.description = cleanText($('#productDescription').text() || '');
+        // Final Effort: Deep Body Scan for dimensions/weight
+        if (results.dimensions === 'N/A' || results.dimensions === '-') {
+            const mBody = fullBodyText.match(/(\d+\.?\d*\s*[x×*]\s*[\d.]+\s*[x×*]\s*[\d.]+\s*(?:inches|in|cm|mm))/i);
+            if (mBody) results.dimensions = cleanText(mBody[1]);
+        }
+        if (results.weight === 'N/A' || results.weight === '-') {
+            const wBody = fullBodyText.match(/(\d+\.?\d*\s*(?:ounces|oz|pounds|lbs|grams|kg))/i);
+            // Ignore tiny weights that are likely false positives in a body scan (under 0.05 oz)
+            if (wBody && wBody[1] && !wBody[1].match(/^0\.0[0-2]/)) {
+                results.weight = cleanText(wBody[1]);
+            }
+        }
+
+        results.description = cleanText($('#productDescription').text()).substring(0, 1000);
 
         // NEW: Extract Product Category (Breadcrumbs)
         const breadcrumbs = [];
