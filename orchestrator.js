@@ -113,8 +113,9 @@ class Orchestrator {
                         result.duration = durationAsin;
                         result.originalUrl = product.originalUrl;
 
-                        // HEALING PASS: If regular scraping failed to find dimensions/weight, ask the AI
-                        if (result.status === 'SUCCESS') {
+                        // HEALING PASS: Only trigger AI Auditor if data is missing or garbled
+                        const needsHealing = result.data.dimensions === 'N/A' || result.data.weight === 'N/A';
+                        if (result.status === 'SUCCESS' && needsHealing) {
                             await vettingEngine.healProductData(result.data, result.rawText || '');
                         }
 
@@ -213,7 +214,7 @@ class Orchestrator {
                             // Search Amazon for competitors with robust retries
                             let searchResults = [];
                             let searchAttempts = 0;
-                            const maxSearchAttempts = 3;
+                            const maxSearchAttempts = 4; // Increased for extra resilience
 
                             let activeQuery = optimizedQuery;
                             while (searchAttempts < maxSearchAttempts && searchResults.length === 0) {
@@ -221,7 +222,13 @@ class Orchestrator {
                                 try {
                                     this.addLog(runId, 'INFO', `Searching for competitors (Attempt ${searchAttempts}/${maxSearchAttempts}) with query: "${activeQuery}"`);
                                     const searchUrl = `https://api.scraperapi.com/structured/amazon/search?api_key=${apiKey}&query=${encodeURIComponent(activeQuery)}&country=us`;
-                                    const searchRes = await axios.get(searchUrl, { timeout: 60000 });
+                                    
+                                    // ADDED: Standard headers and longer per-request timeout
+                                    const searchRes = await axios.get(searchUrl, { 
+                                        timeout: 90000, 
+                                        headers: { 'Accept': 'application/json' } 
+                                    });
+
                                     if (searchRes.status === 200 && searchRes.data?.results && searchRes.data.results.length > 0) {
                                         searchResults = searchRes.data.results;
                                         break;
@@ -229,17 +236,20 @@ class Orchestrator {
                                 } catch (eSearch) {
                                     this.addLog(runId, 'WARN', `Search attempt ${searchAttempts} failed: ${eSearch.message}`);
                                     if (searchAttempts < maxSearchAttempts) {
-                                        await delay(3000);
-                                        // On last attempt (or if first failed with empty), try a broader fallback query
-                                        if (searchAttempts === 1 || searchAttempts === maxSearchAttempts - 1) {
+                                        // MODIFIED: Exponential Backoff (3s, 8s, 15s)
+                                        const backoff = Math.pow(2, searchAttempts) * 3000;
+                                        this.addLog(runId, 'INFO', `Connection reset or timeout. Waiting ${Math.round(backoff/1000)}s for service recovery...`);
+                                        await delay(backoff);
+
+                                        // On failure attempts or if results were empty, pivot to a broader fallback query
+                                        if (searchAttempts >= 1) {
                                             activeQuery = `${primary.data.category?.split('>').pop() || ''} ${primary.data.title?.split(' ').slice(0, 3).join(' ')}`.trim();
-                                            this.addLog(runId, 'INFO', `Switching to safe fallback query for next attempt: "${activeQuery}"`);
+                                            this.addLog(runId, 'INFO', `Pivoting to safe fallback query: "${activeQuery}"`);
                                         }
                                     }
                                 }
                             }
 
-                            // If first search returns too few, try a broader search IF we haven't already tried a retry
                             if (searchResults.length < 5) {
                                 const broaderQuery = `${primary.data.category?.split('>').pop() || ''} ${primary.data.title?.split(' ').slice(0, 3).join(' ')}`.trim();
                                 this.addLog(runId, 'INFO', `Found only ${searchResults.length} results. Trying broader backup search: "${broaderQuery}"`);
@@ -251,6 +261,14 @@ class Orchestrator {
                                     }
                                 } catch (e2) { /* ignore broader search failure */ }
                             }
+
+                            // DEDUPLICATION: Ensure we don't have overlapping results between search passes
+                            const uniqueAsins = new Set();
+                            searchResults = searchResults.filter(r => {
+                                if (!r.asin || uniqueAsins.has(r.asin)) return false;
+                                uniqueAsins.add(r.asin);
+                                return true;
+                            });
 
                             // Pre-filter by price proximity (within ±70% of input price) - loosened to avoid total failure
                             const inputPrice = parseFloat(String(primary.data.price).replace(/[^0-9.]/g, '')) || 0;
@@ -274,45 +292,56 @@ class Orchestrator {
                                 const bestComps = await vettingEngine.selectTopCompetitors(primary.data, candidates.slice(0, 20));
                                 this.addLog(runId, 'INFO', `Claude selected ${bestComps.length} direct competitors.`);
 
-                                let discovered = 0;
-                                for (const comp of bestComps) {
-                                    if (discovered >= 6) break; // Find up to 6 to be safe
-                                    if (run.results.some(r => r.asin === comp.asin)) continue;
+                                this.addLog(runId, 'INFO', `Scraping ${bestComps.length} discovered competitors in parallel...`);
+                                
+                                const discoveredResults = await Promise.all(
+                                    bestComps.slice(0, 6).map(async (comp) => {
+                                        if (run.results.some(r => r.asin === comp.asin)) return null;
 
-                                    this.addLog(runId, 'INFO', `Scraping competitor [${discovered + 1}/6]: ${comp.asin}`);
-                                    const compResult = await scraper.scrapeASIN({ asin: comp.asin, domain: primary.domain || 'amazon.com' });
+                                        const compResult = await scraper.scrapeASIN({ asin: comp.asin, domain: primary.domain || 'amazon.com' });
 
-                                    if (compResult.status === 'SUCCESS') {
-                                        // HEALING PASS: Correct any N/As in competitors
-                                        await vettingEngine.healProductData(compResult.data, compResult.rawText || '');
-                                        
-                                        run.results.push(compResult);
-                                        run.succeededAsins++;
-                                        this.addLog(runId, 'CHECK', `[DISCOVERED] ${comp.asin} — $${compResult.data.price} — ${compResult.data.brand || 'N/A'}`);
-                                        discovered++;
-                                    } else {
-                                        // Use search-result data as fallback so it still appears in the comparison
-                                        run.results.push({
-                                            asin: comp.asin,
-                                            status: 'SUCCESS',
-                                            data: {
-                                                asin: comp.asin,
-                                                title: comp.name || comp.title || 'N/A',
-                                                brand: comp.brand || 'Found Competitor',
-                                                price: comp.price || 'N/A',
-                                                reviews: comp.total_reviews ? String(comp.total_reviews) : 'N/A',
-                                                stars: comp.stars ? String(comp.stars) : 'N/A',
-                                                imageUrl: comp.image || '',
-                                                boughtPastMonth: comp.sales_volume || 'N/A',
-                                                url: `https://www.amazon.com/dp/${comp.asin}`
+                                        if (compResult.status === 'SUCCESS') {
+                                            // HEALING PASS: Only trigger AI Auditor if data is missing or garbled
+                                            const d = compResult.data;
+                                            const needsHealing = !d.dimensions || d.dimensions === 'N/A' || !d.weight || d.weight === 'N/A';
+                                            if (needsHealing) {
+                                                await vettingEngine.healProductData(d, compResult.rawText || '');
                                             }
-                                        });
-                                        run.succeededAsins++;
-                                        this.addLog(runId, 'WARN', `Full scrape failed for ${comp.asin} — using search data as fallback.`);
-                                        discovered++;
+                                            
+                                        this.addLog(runId, 'CHECK', `[DISCOVERED] ${comp.asin} — $${d.price}`);
+                                        return compResult;
+                                    } else {
+                                        this.addLog(runId, 'WARN', `Full scrape failed for ${comp.asin} — using AI to estimate specs from title.`);
+                                        // Use search-result data as fallback + AI estimation
+                                        const fallbackData = {
+                                            asin: comp.asin,
+                                            title: comp.name || comp.title || 'N/A',
+                                            brand: comp.brand || 'Found Competitor',
+                                            price: comp.price || 'N/A',
+                                            reviews: comp.total_reviews ? String(comp.total_reviews) : 'N/A',
+                                            stars: comp.stars ? String(comp.stars) : 'N/A',
+                                            imageUrl: comp.image || '',
+                                            boughtPastMonth: comp.sales_volume || 'N/A',
+                                            dimensions: 'N/A',
+                                            weight: 'N/A',
+                                            url: `https://www.amazon.com/dp/${comp.asin}`
+                                        };
+                                        
+                                        // Still call healing using the title as "raw text" to get estimates
+                                        await vettingEngine.healProductData(fallbackData, fallbackData.title);
+                                        
+                                        return { asin: comp.asin, status: 'SUCCESS', data: fallbackData };
                                     }
-                                }
-                                this.addLog(runId, 'INFO', `Competitor discovery complete: found ${discovered} competitors. Total products for analysis: ${run.results.filter(r => r.status === 'SUCCESS').length}`);
+                                })
+                            );
+
+                            discoveredResults.filter(r => r !== null).forEach(r => {
+                                run.results.push(r);
+                                run.succeededAsins++;
+                            });
+
+                            const effectiveCount = discoveredResults.filter(r => r !== null).length;
+                            this.addLog(runId, 'INFO', `Competitor discovery complete: found ${effectiveCount} competitors. Total products for analysis: ${run.results.filter(r => r.status === 'SUCCESS').length}`);
                             } else {
                                 this.addLog(runId, 'WARN', 'No suitable competitor candidates found in search results.');
                             }
@@ -336,9 +365,9 @@ class Orchestrator {
                         }
                     } catch (vetErr) {
                         this.addLog(runId, 'ERROR', `AI Vetting failed: ${vetErr.message}. Falling back to local financial modeling.`);
-                        const price = successResults[0]?.data?.price || 29.99;
-                        run.vettingResults = vettingEngine.runLocalModelingFallback(run.ideaName, price);
-                        this.addLog(runId, 'INFO', `Local fallback modeling complete. Price: $${price}`);
+                        run.vettingResults = vettingEngine.runLocalModelingFallback(run.ideaName, successResults);
+                        const priceResult = run.vettingResults.analysis.targetPrice;
+                        this.addLog(runId, 'INFO', `Local fallback modeling complete. Price: $${priceResult}`);
                     }
                 }
 

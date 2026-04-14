@@ -148,14 +148,26 @@ class AntigravitySheetsService {
             ];
             summaryHeaders.forEach((h, idx) => { values[1][8 + idx] = h; });
 
+            // --- EDITABLE INVENTORY FACTOR (Row 7, 0.5 cells below Table 2) ---
+            // This 0.5 factor is used in: Avg Inventory = Units Sold/Day * 365 * factor
+            // Users can change M7 to 0.4, 0.3, etc. and all inventory values update automatically.
+            values[6][11] = 'Inventory Factor (editable ↓)'; // L7 - label
+            values[6][12] = 0.5;                              // M7 - editable value (default 0.5)
+            values[6][13] = '<-- Change this factor to adjust Avg Inventory. Formula: Units/Day (3rd table) × 365 × Factor'; // N7 - instruction
+
+            // DYNAMIC LOOKUP: Instead of hardcoded cell references, we search for the "Inventory Factor" label.
+            const invFactorFormula = `IFERROR(INDEX($M$1:$M$20, MATCH("Inventory Factor*", $L$1:$L$20, 0)), 0.5)`;
+
             // SKU 1 Summary Data (Row 3)
             const sku1 = analysis.sku1;
-            values[2][8] = ctx.avgInventoryHolding; // I3
+            // Dynamic Selling Price for SKU 1 from Ladder (used for calculation)
+            const sku1ActivePriceFormula = `IFERROR(INDEX(F12:F37, MATCH("Regular Price", I12:I37, 0)), ${sku1.regularPrice || 29.99})`;
+
+            values[2][8] = `=INDEX(J17:J42, MATCH("Most Likely Scenario", P17:P42, 0)) * ${ctx.sellingDaysPerYear || 365} * ${invFactorFormula}`; // I3 (Units/day * Days * Dynamic Factor)
             values[2][9] = sku1.name; // J3
-            // Revenue for SKU 1 from scenario table (K3)
-            values[2][10] = `=INDEX(N17:N42, MATCH("Most Likely Scenario", P17:P42, 0))`; 
+            values[2][10] = `=INDEX(N17:N42, MATCH("Most Likely Scenario", P17:P42, 0))`; // K3
             values[2][11] = ctx.returnRate; // L3
-            values[2][12] = `=INDEX(H12:H37, MATCH("Regular Price", I12:I37, 0))`; // M3 (Gross Margin of current price)
+            values[2][12] = `=(${sku1ActivePriceFormula}*0.85-I5-8)/${sku1ActivePriceFormula}`; // M3 (Gross Margin)
             values[2][13] = `=K3*${ctx.adSpendRate}`; // N3 (Ad Spend)
             values[2][14] = `=I3*I5`; // O3
             values[2][15] = sku1.baseballCategory; // P3
@@ -164,16 +176,21 @@ class AntigravitySheetsService {
             values[2][18] = `=(((K3*(1-L3)*M3)-N3)/K3)`; // S3 (Net Margin)
             values[2][19] = `=S3*K3`; // T3 (EACM)
 
+            // Link B5 (Selling Price) to the dynamic selection for SKU 1
+            values[4][2] = `=${sku1ActivePriceFormula}`; 
+
             // SKU 2 Summary Data (Row 4) - Optional
             if (analysis.sku2 && analysis.sku2.name) {
                 const sku2 = analysis.sku2;
-                values[3][8] = ctx.avgInventoryHolding; // I4
+                const sku2ActivePriceFormula = `IFERROR(INDEX(F41:F66, MATCH("Regular Price", I41:I66, 0)), ${sku2.regularPrice || 39.99})`;
+                
+                values[3][8] = `=INDEX(J47:J72, MATCH("Most Likely Scenario", P47:P72, 0)) * ${ctx.sellingDaysPerYear || 365} * ${invFactorFormula}`; // I4 (Units/day * Days * Dynamic Factor)
                 values[3][9] = sku2.name; // J4
                 values[3][10] = `=INDEX(N47:N72, MATCH("Most Likely Scenario", P47:P72, 0))`; // K4
                 values[3][11] = ctx.returnRate; // L4
-                values[3][12] = `=INDEX(H41:H66, MATCH("Regular Price", I41:I66, 0))`; // M4
+                values[3][12] = `=(${sku2ActivePriceFormula}*0.85-I7-8)/${sku2ActivePriceFormula}`; // M4
                 values[3][13] = `=K4*${ctx.adSpendRate}`; // N4
-                values[3][14] = `=I4*I7`; // O4 (Uses I7 as COGS)
+                values[3][14] = `=I4*I7`; // O4
                 values[3][15] = sku2.baseballCategory; // P4
                 values[3][16] = ctx.leadTimeDays; // Q4
                 values[3][17] = `=(((K4*(1-L4)*M4)-N4)/O4)*100`; // R4
@@ -201,7 +218,16 @@ class AntigravitySheetsService {
             values[10][7] = `Gross Margin`; // H11
 
             // COST TABLE (Rows 12-37)
-            let basePrice = 9.99;
+            // Calculate basePrice to start near the 30% Gross Margin point
+            const sku1TargetCogs = analysis.sku1.targetCogs || 5.50;
+            const sku1Fba = analysis.sku1.fbaFee || 4.50;
+            const sku1Warehouse = ctx.supplierToWarehouseShipping || 1.50;
+            const thirtyPercentMarginPriceSku1 = (sku1TargetCogs + sku1Fba + sku1Warehouse) / 0.55;
+            
+            // Start the ladder a few rows below the 30% target 
+            let basePrice = Math.max(9.99, Math.floor(thirtyPercentMarginPriceSku1) - 3);
+
+            // COST TABLE (Rows 12-37)
             for (let i = 0; i < 26; i++) {
                 const r = 11 + i;
                 const sellPrice = basePrice + i;
@@ -263,9 +289,14 @@ class AntigravitySheetsService {
                 values[39][6] = `Net Profit`;
                 values[39][7] = `Gross Margin`;
 
+                const sku2TargetCogs = analysis.sku2.targetCogs || 15.00;
+                const sku2Fba = analysis.sku2.fbaFee || 6.50;
+                const zeroMarginPriceSku2 = (sku2TargetCogs + sku2Fba + ctx.supplierToWarehouseShipping) / 0.85;
+                let sku2BasePrice = Math.max(9.99, Math.floor(zeroMarginPriceSku2 - 3));
+
                 for (let i = 0; i < 26; i++) {
                     const r = 40 + i;
-                    const sellPrice = basePrice + i + 10; // offset? User says "different size product = same 26 rows"
+                    const sellPrice = sku2BasePrice + i; 
                     values[r][1] = `=$I$7`; // B uses SKU 2 COGS
                     values[r][2] = sku2.fbaFee; // C
                     values[r][3] = ctx.supplierToWarehouseShipping; // D
@@ -313,6 +344,14 @@ class AntigravitySheetsService {
             // Yellow fill Row 5 B (Selling Price)
             addReq({ repeatCell: { range: { sheetId: targetSheetId, startRowIndex: 4, endRowIndex: 5, startColumnIndex: 1, endColumnIndex: 8 }, cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 1, blue: 0 }, textFormat: { bold: true } } }, fields: 'userEnteredFormat(backgroundColor,textFormat)' } });
 
+            // --- Inventory Factor row (Row 7 = index 6) formatting ---
+            // Label cell L7 (col 11): bold, light orange background
+            addReq({ repeatCell: { range: { sheetId: targetSheetId, startRowIndex: 6, endRowIndex: 7, startColumnIndex: 11, endColumnIndex: 12 }, cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 0.9, blue: 0.6 }, textFormat: { bold: true } } }, fields: 'userEnteredFormat(backgroundColor,textFormat)' } });
+            // Value cell M7 (col 12): bright orange fill, bold - this is the editable 0.5 factor
+            addReq({ repeatCell: { range: { sheetId: targetSheetId, startRowIndex: 6, endRowIndex: 7, startColumnIndex: 12, endColumnIndex: 13 }, cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 0.65, blue: 0 }, textFormat: { bold: true, fontSize: 12 } } }, fields: 'userEnteredFormat(backgroundColor,textFormat)' } });
+            // Instruction cell N7 (col 13): italic, grey text
+            addReq({ repeatCell: { range: { sheetId: targetSheetId, startRowIndex: 6, endRowIndex: 7, startColumnIndex: 13, endColumnIndex: 20 }, cell: { userEnteredFormat: { textFormat: { italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.4 } } } }, fields: 'userEnteredFormat(textFormat)' } });
+
             // Light blue (C9DAF8) Summary headers
             addReq({ repeatCell: { range: { sheetId: targetSheetId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 8, endColumnIndex: 23 }, cell: { userEnteredFormat: { backgroundColor: { red: 0.78, green: 0.85, blue: 0.97 }, textFormat: { bold: true } } }, fields: 'userEnteredFormat(backgroundColor,textFormat)' } });
 
@@ -350,6 +389,24 @@ class AntigravitySheetsService {
                     }, index: 1
                 }
             });
+
+            // --- SKU 1 VOLUME SCENARIOS (Table 3) SELECTORS & HIGHLIGHTS ---
+            // 1. Dropdowns in Col P (index 15) for Row 17-42
+            addReq({ setDataValidation: { range: { sheetId: targetSheetId, startRowIndex: 16, endRowIndex: 42, startColumnIndex: 15, endColumnIndex: 16 }, rule: { condition: { type: 'ONE_OF_LIST', values: [{ userEnteredValue: 'Most Likely Scenario' }, { userEnteredValue: 'Best Case Scenario' }] }, showCustomUi: true, strict: false } } });
+            // 2. Dynamic Highlight (Yellow - Most Likely)
+            addReq({ addConditionalFormatRule: { rule: { ranges: [{ sheetId: targetSheetId, startRowIndex: 16, endRowIndex: 42, startColumnIndex: 9, endColumnIndex: 16 }], booleanRule: { condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Most Likely Scenario' }] }, format: { backgroundColor: { red: 1, green: 1, blue: 0 }, textFormat: { bold: true } } } }, index: 2 } });
+            // 3. Dynamic Highlight (Green - Best Case)
+            addReq({ addConditionalFormatRule: { rule: { ranges: [{ sheetId: targetSheetId, startRowIndex: 16, endRowIndex: 42, startColumnIndex: 9, endColumnIndex: 16 }], booleanRule: { condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Best Case Scenario' }] }, format: { backgroundColor: { red: 0, green: 0.85, blue: 0 }, textFormat: { bold: true } } } }, index: 3 } });
+
+            // --- SKU 2 VOLUME SCENARIOS (Table 3) SELECTORS & HIGHLIGHTS ---
+            if (analysis.sku2 && analysis.sku2.name) {
+                // 1. Dropdowns in Col P (index 15) for Row 47-72
+                addReq({ setDataValidation: { range: { sheetId: targetSheetId, startRowIndex: 46, endRowIndex: 72, startColumnIndex: 15, endColumnIndex: 16 }, rule: { condition: { type: 'ONE_OF_LIST', values: [{ userEnteredValue: 'Most Likely Scenario' }, { userEnteredValue: 'Best Case Scenario' }] }, showCustomUi: true, strict: false } } });
+                // 2. Dynamic Highlight (Yellow - Most Likely)
+                addReq({ addConditionalFormatRule: { rule: { ranges: [{ sheetId: targetSheetId, startRowIndex: 46, endRowIndex: 72, startColumnIndex: 9, endColumnIndex: 16 }], booleanRule: { condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Most Likely Scenario' }] }, format: { backgroundColor: { red: 1, green: 1, blue: 0 }, textFormat: { bold: true } } } }, index: 4 } });
+                // 3. Dynamic Highlight (Green - Best Case)
+                addReq({ addConditionalFormatRule: { rule: { ranges: [{ sheetId: targetSheetId, startRowIndex: 46, endRowIndex: 72, startColumnIndex: 9, endColumnIndex: 16 }], booleanRule: { condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Best Case Scenario' }] }, format: { backgroundColor: { red: 0, green: 0.85, blue: 0 }, textFormat: { bold: true } } } }, index: 5 } });
+            }
 
             // Set column widths
             const colWidths = [50, 200, 100, 100, 100, 100, 100, 100, 200, 150];
