@@ -12,10 +12,15 @@ app.use(express.json());
 
 // Basic Authentication Middleware
 const authMiddleware = (req, res, next) => {
-    // FAIL-SAFE: Default to 'admin123' if the variable is missing or empty in Vercel
-    const appPassword = (process.env.APP_PASSWORD || 'admin123').trim();
+    // Sanitize APP_PASSWORD: remove quotes and trim
+    const appPassword = (process.env.APP_PASSWORD || 'admin123').replace(/["']/g, '').trim();
     
-    const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
+    const authHeader = req.headers.authorization || '';
+    if (!authHeader.startsWith('Basic ')) {
+        return promptAuth(res);
+    }
+
+    const b64auth = authHeader.split(' ')[1] || '';
     const parts = Buffer.from(b64auth, 'base64').toString().split(':');
     const login = (parts[0] || '').toLowerCase().trim();
     const password = parts.slice(1).join(':').trim();
@@ -24,9 +29,12 @@ const authMiddleware = (req, res, next) => {
         return next();
     }
 
-    const freshRealm = 'Secure Dashboard Audit ' + new Date().getTime();
-    res.set('WWW-Authenticate', `Basic realm="${freshRealm}"`);
-    res.status(401).send('Authentication required. Use admin / admin123');
+    return promptAuth(res);
+};
+
+const promptAuth = (res) => {
+    res.set('WWW-Authenticate', 'Basic realm="Amazon Intelligence Dashboard"');
+    res.status(401).send('Authentication required. Username: admin, Password: (see .env)');
 };
 
 app.use(authMiddleware);

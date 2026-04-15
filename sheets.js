@@ -252,7 +252,7 @@ class SheetsService {
             if (ai) {
                 values.push(['SECTION 3 — Market Intelligence Brief', '', '', '', '', '', '', '']); 
                 values.push(['STRATEGIC MARKET ANALYSIS', '', '', '', 'OPERATIONAL BENCHMARKS', '', '', '']);
-                values.push([fNA(ai.intelligenceBrief, 'Comprehensive market analysis in progress...'), '', '', '', `Target Price Focus: $${fNA(ai.targetPrice, '0.00')}\nEst. Seasonality: ${fNA(ai.seasonality, '365')} days\nProduct Format: ${fNA(ai.formatResearch, 'Market Standard')}`, '', '', '']);
+                values.push([fNA(ai.intelligenceBrief, 'Comprehensive market analysis in progress...'), '', '', '', `Target SKU Size: ${fNA(ai.targetSize, '1-Unit Standard')}\nTarget Price Focus: $${fNA(ai.targetPrice, '0.00')}\nEst. Seasonality: ${fNA(ai.seasonality, '365')} days\nProduct Format: ${fNA(ai.formatResearch, 'Market Standard')}`, '', '', '']);
                 values.push([]);
             }
 
@@ -388,9 +388,10 @@ class SheetsService {
 
             // Summary Callouts (Row 55)
             // A55: COGS | B55: Margin | C55: Price | D55: Revenue
+            const tFees = (financials?.fbaFee || 4.50) + (financials?.supplierToAmazon || 2.00) + (financials?.storageAndInbound || 1.50);
             values.push([
                 financials?.targetCogs || 5.00, 
-                `=(C${summaryTargetPriceRow}*0.85-A${summaryTargetPriceRow}-8)/C${summaryTargetPriceRow}`, 
+                `=(C${summaryTargetPriceRow}*0.85-A${summaryTargetPriceRow}-${tFees.toFixed(2)})/C${summaryTargetPriceRow}`, 
                 `=IFERROR(INDEX($F$${ladderStart}:$F$${ladderEnd}, MATCH("Regular Price", $I$${ladderStart}:$I$${ladderEnd}, 0)), ${financials?.annualMetrics?.regularPrice || 29.99})`, 
                 `=D${t2DataRow}`, 
                 '<- Total Annual Revenue (Dynamic Selection Active)', '', '', '', '', '', '', '', ''
