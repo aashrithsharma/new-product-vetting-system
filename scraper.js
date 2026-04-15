@@ -457,7 +457,12 @@ class ScraperEngine {
 
         // PROJECT 2 EXTENSIONS: Dimensions, Weight
         // PROJECT 2 EXTENSIONS: Dimensions, Weight
-        const dimKeys = ['product dimensions', 'item dimensions lxwxh', 'package dimensions', 'dimensions', 'size', 'item dimensions'];
+        let actualSize = details['size'] ? cleanText(details['size']) : 'N/A';
+        if (actualSize === 'N/A') {
+            const titleMatch = results.title.match(/(\d+\.?\d*\s?(gallon|gal|liters?|l|ml|fl\s?oz|oz|count|ct|pack))/i);
+            if (titleMatch) actualSize = cleanText(titleMatch[0]);
+        }
+        const dimKeys = ['product dimensions', 'item dimensions lxwxh', 'package dimensions', 'dimensions', 'item dimensions'];
         for (const k of dimKeys) { if (details[k]) { results.dimensions = normalizeDimensions(details[k]); break; } }
         
         // Aggressive table lookup for dimensions if still N/A
@@ -465,9 +470,12 @@ class ScraperEngine {
             $('.a-keyvalue tr, .prodDetTable tr, #technicalSpecifications_section_1 tr').each((i, el) => {
                 const label = $(el).find('th, td:first-child').text().toLowerCase();
                 const value = $(el).find('td').last().text().trim();
-                if (label.includes('dimensions') || label.includes('size') || label.includes('lxwxh')) {
+                if (label.includes('dimensions') || label.includes('lxwxh')) {
                     results.dimensions = normalizeDimensions(value);
                     return false;
+                }
+                if (label === 'size' && actualSize === 'N/A') {
+                    actualSize = cleanText(value);
                 }
             });
         }
@@ -487,6 +495,8 @@ class ScraperEngine {
                 if (key.includes('dimension') || key.includes('size')) {
                     const val = details[key];
                     if (val.match(/\d+\s*[x×*]\s*\d+/) || val.match(/\d+\.?\d*/)) {
+                        // skip val if it's obviously a pure size and we're looking for dimensions
+                        if (key.includes('size') && !val.match(/\d+\s*[x×*]\s*\d+/)) continue;
                         results.dimensions = normalizeDimensions(val);
                         break;
                     }
@@ -590,6 +600,15 @@ class ScraperEngine {
         }
 
         results.description = cleanText($('#productDescription').text()).substring(0, 1000);
+
+        // Combine size and dimensions if both exist, so the spreadsheet shows both
+        if (actualSize !== 'N/A') {
+            if (results.dimensions && results.dimensions !== 'N/A' && results.dimensions !== '-' && !results.dimensions.includes(actualSize)) {
+                results.dimensions = `${actualSize} | ${results.dimensions}`;
+            } else if (!results.dimensions || results.dimensions === 'N/A' || results.dimensions === '-') {
+                results.dimensions = actualSize;
+            }
+        }
 
         // NEW: Extract Product Category (Breadcrumbs)
         const breadcrumbs = [];

@@ -150,13 +150,16 @@ ${snip}`;
             const analysis = await this.runClaudeAnalysis(ideaName, competitorData);
             logger.info(`[VETTING] Successfully analyzed ${ideaName}. MostLikely: ${analysis.mostLikelyUnitsPerDay}/day, BestCase: ${analysis.bestCaseUnitsPerDay}/day`);
 
+            const primaryProduct = competitorData && competitorData.length > 0 ? (competitorData[0].data || competitorData[0]) : null;
+
             const financials = this.runFinancialModeling(
                 analysis.targetPrice,
                 analysis.seasonality,
                 analysis.estimatedUnitsPerDay, // most likely
                 analysis.bestCaseUnitsPerDay,  // best case — passed directly from Claude
                 analysis.returnRate,           // Claude's category return rate estimate
-                ideaName                       // Pass for overrides
+                ideaName,                      // Pass for overrides
+                primaryProduct
             );
 
             // --- FINAL SEASONALITY ENFORCEMENT ---
@@ -396,6 +399,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
            - ANALYZE DATA: Scan \`category\` and \`keyFeatures\`. Categorize as 365 if there is ANY professional/replenishable utility.
            - BSR VALIDATION: If competitors show high sales velocity in the current "off-season," it must be 365.
            - If unsure, DEFAULT to 365.
+        4.5. TARGET SKU SIZE: Based on the competitor data, identify which specific size (e.g., "32 oz", "1 Gallon", "Pack of 2") this Target Price and financial model is specifically for.
         5. TARGET PRICE POSITIONING: Six10 is a MID-PREMIUM brand. 
            - Position the target price 10-20% ABOVE the category median. 
            - Focus on matching the PREMIUM tier's features/quality while maintaining a slight price advantage over the highest-priced leader.
@@ -429,6 +433,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         OUTPUT: Respond with ONLY valid raw JSON — no markdown, no explanation, no code blocks.
         {
           "classifications": [{"asin": "B0...", "brand": "Brand", "tier": "Mid-Range", "reasoning": "..."}],
+          "targetSize": "1 Gallon",
           "targetPrice": 24.99,
           "pricingReasoning": "...",
           "mostLikelyUnitsPerDay": ${velocity.mostLikely},
@@ -485,7 +490,62 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
      * Layer 3: Financial Modeling (Automated Calculation)
      * Back-calculates target COGS for 30% margin and 200% ROIC.
      */
-    runFinancialModeling(targetSellingPrice, seasonalityStr, estimatedUnits, bestCaseUnits = null, claudeReturnRate = null, ideaName = null) {
+    calculateFBAFee(productData) {
+        const defaultFee = 4.50;
+        if (!productData) return defaultFee;
+
+        let weightLbs = 1.0;
+        const weightStr = (productData.weight || '').toLowerCase();
+        const weightMatch = weightStr.match(/([\d.]+)/);
+        
+        if (weightMatch) {
+            let val = parseFloat(weightMatch[1]);
+            if (weightStr.includes('oz') || weightStr.includes('ounce')) {
+                weightLbs = val / 16;
+            } else if (weightStr.includes('g') && !weightStr.includes('kg')) {
+                weightLbs = val * 0.00220462;
+            } else if (weightStr.includes('kg')) {
+                weightLbs = val * 2.20462;
+            } else {
+                weightLbs = val; // Default to lbs
+            }
+        }
+
+        let maxDim = 10;
+        const dimStr = (productData.dimensions || '').toLowerCase();
+        const dimsMatches = dimStr.match(/([\d.]+)/g);
+        if (dimsMatches && dimsMatches.length >= 1) {
+            const dims = dimsMatches.map(Number).sort((a, b) => b - a);
+            maxDim = dims[0];
+            if (dimStr.includes('cm') || dimStr.includes('centimeter')) {
+                maxDim = maxDim * 0.393701;
+            }
+        }
+
+        logger.info(`[FINANCIALS] Calculating FBA fee using Extracted Weight: ${weightLbs.toFixed(2)} lbs, Max Dim: ${maxDim.toFixed(2)} inches`);
+
+        if (maxDim <= 15 && weightLbs <= 1) { // Small Standard
+            if (weightLbs <= 0.25) return 3.22;
+            if (weightLbs <= 0.50) return 3.40;
+            if (weightLbs <= 0.75) return 3.58;
+            return 3.77;
+        } else { // Large Standard
+            if (weightLbs <= 0.25) return 3.86;
+            if (weightLbs <= 0.50) return 4.08;
+            if (weightLbs <= 0.75) return 4.24;
+            if (weightLbs <= 1.00) return 4.75;
+            if (weightLbs <= 1.50) return 5.40;
+            if (weightLbs <= 2.00) return 5.69;
+            if (weightLbs <= 2.50) return 6.10;
+            if (weightLbs <= 3.00) return 6.51;
+            
+            const over3 = Math.ceil((weightLbs - 3) * 2); // chunks of half lb
+            const fee = 7.17 + (over3 * 0.16);
+            return parseFloat(fee.toFixed(2));
+        }
+    }
+
+    runFinancialModeling(targetSellingPrice, seasonalityStr, estimatedUnits, bestCaseUnits = null, claudeReturnRate = null, ideaName = null, productData = null) {
         const price = parseFloat(targetSellingPrice) || 19.99;
         let days = (seasonalityStr === '245' || seasonalityStr === 245) ? 245 : 365;  
 
@@ -519,7 +579,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
             ? claudeReturnRate : 0.025;
         const avgInvHolding = 0.5; // Default per debrief
         
-        const fbaFee = 4.50;
+        const fbaFee = this.calculateFBAFee(productData);
         const supplierToAmazon = 2.00;   // Fixed $2.00 per debrief
         const storageAndInbound = 1.50;  // Fixed $1.50 per debrief
 
@@ -694,6 +754,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
                 tier: 'Mid-Range',
                 reasoning: 'Auto-classified via Market Engine V2.'
             })),
+            targetSize: competitorData[0]?.data?.title?.match(/(\d+\s*(oz|ounce|gal|gallon|lb|pound|pack))/i)?.[0] || 'Standard Size',
             targetPrice,
             estimatedUnitsPerDay: velocity.mostLikely,
             mostLikelyUnitsPerDay: velocity.mostLikely,
@@ -705,7 +766,8 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
             intelligenceBrief: `[ENGINE V2] Detailed market analysis conducted using statistical correlation of the top ${competitorData.length} competitors. Pricing is optimized at $${targetPrice} to capture a Mid-Premium advantage. Volume modeling indicates a ${baseballCategory} opportunity with steady performance observed across lead competitors.`
         };
 
-        const financials = this.runFinancialModeling(targetPrice, isSeasonalStr, velocity.mostLikely, velocity.bestCase, 0.025, ideaName);
+        const primaryProduct = competitorData && competitorData.length > 0 ? (competitorData[0].data || competitorData[0]) : null;
+        const financials = this.runFinancialModeling(targetPrice, isSeasonalStr, velocity.mostLikely, velocity.bestCase, 0.025, ideaName, primaryProduct);
 
         return {
             ideaName,
