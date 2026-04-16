@@ -113,8 +113,12 @@ class Orchestrator {
                         result.duration = durationAsin;
                         result.originalUrl = product.originalUrl;
 
-                        // HEALING PASS: Only trigger AI Auditor if data is missing or garbled
-                        const needsHealing = result.data.dimensions === 'N/A' || result.data.weight === 'N/A';
+                        // HEALING PASS: Target 100% success for Dimensions, Weight, and Volume
+                        const d = result.data;
+                        const needsHealing = !d.dimensions || d.dimensions === 'N/A' || d.dimensions === '-' || !d.dimensions.includes(' x ') ||
+                                             !d.weight || d.weight === 'N/A' || d.weight === '-' ||
+                                             !d.volume || d.volume === 'N/A' || d.volume === '-';
+                        
                         if (result.status === 'SUCCESS' && needsHealing) {
                             await vettingEngine.healProductData(result.data, result.rawText || '');
                         }
@@ -171,8 +175,14 @@ class Orchestrator {
                         retryResult.originalUrl = product.originalUrl;
 
                         if (retryResult.status === 'SUCCESS') {
-                            // HEALING PASS: If regular scraping failed to find dimensions/weight, ask the AI
-                            await vettingEngine.healProductData(retryResult.data, retryResult.rawText || '');
+                            // HEALING PASS: Target 100% success for Dimensions, Weight, and Volume
+                            const d = retryResult.data;
+                            const needsHealing = !d.dimensions || d.dimensions === 'N/A' || d.dimensions === '-' || !d.dimensions.includes(' x ') ||
+                                                 !d.weight || d.weight === 'N/A' || d.weight === '-' ||
+                                                 !d.volume || d.volume === 'N/A' || d.volume === '-';
+                            if (needsHealing) {
+                                await vettingEngine.healProductData(d, retryResult.rawText || '');
+                            }
                             
                             if (run.results[index].status === 'CAPTCHA_BLOCKED') run.blockedAsins--;
                             else run.failedAsins--;
@@ -301,9 +311,11 @@ class Orchestrator {
                                         const compResult = await scraper.scrapeASIN({ asin: comp.asin, domain: primary.domain || 'amazon.com' });
 
                                         if (compResult.status === 'SUCCESS') {
-                                            // HEALING PASS: Only trigger AI Auditor if data is missing or garbled
+                                            // HEALING PASS: Target 100% success for Dimensions, Weight, and Volume
                                             const d = compResult.data;
-                                            const needsHealing = !d.dimensions || d.dimensions === 'N/A' || !d.weight || d.weight === 'N/A';
+                                            const needsHealing = !d.dimensions || d.dimensions === 'N/A' || d.dimensions === '-' || !d.dimensions.includes(' x ') ||
+                                                                 !d.weight || d.weight === 'N/A' || d.weight === '-' ||
+                                                                 !d.volume || d.volume === 'N/A' || d.volume === '-';
                                             if (needsHealing) {
                                                 await vettingEngine.healProductData(d, compResult.rawText || '');
                                             }

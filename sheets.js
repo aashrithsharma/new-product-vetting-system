@@ -162,6 +162,7 @@ class SheetsService {
                 'Monthly Sales Badge',
                 'Dimensions L×W×H',
                 'Item Weight',
+                'Item Volume / Count',
                 'Positioning / Tier', 
                 'Title (Hover/Click)',
                 'Link'
@@ -229,18 +230,30 @@ class SheetsService {
                     estSales = estSales.replace('~', 'Est. ');
                 }
 
-                // Apply the 'Peer Network' Smart Fallbacks for 100% Success Rate
-                let badgeFallback = '< 50 bought in past month';
-                let finalDim = (!d.dimensions || d.dimensions === 'N/A' || d.dimensions === '-' || d.dimensions === '—') ? dynamicDim : d.dimensions;
-                let finalWeight = (!d.weight || d.weight === 'N/A' || d.weight === '-' || d.weight === '—') ? dynamicWeight : d.weight;
+                // --- 100% ACCURACY MODE: UNIQUE DATA PER ASIN ---
+                // No more neighbor/global fallbacks. 
+                // Each column must report its own verified data or 'Pending' status.
+                
+                let finalDim = (!d.dimensions || d.dimensions === 'N/A' || d.dimensions === '-' || !d.dimensions.includes(' x ')) 
+                               ? 'Dimensions Pending' 
+                               : d.dimensions;
+                
+                let finalWeight = (!d.weight || d.weight === 'N/A' || d.weight === '-')
+                                 ? 'Weight Pending'
+                                 : d.weight;
+                
+                let finalVolume = (!d.volume || d.volume === 'N/A' || d.volume === '-')
+                                  ? 'Volume Pending'
+                                  : d.volume;
 
                 grid[7].push(estSales);
-                grid[8].push(fNA(d.boughtPastMonth, badgeFallback)); // Past Month
+                grid[8].push(fNA(d.boughtPastMonth, '< 50 bought in past month')); 
                 grid[9].push(finalDim);
                 grid[10].push(finalWeight);
-                grid[11].push(fNA(tier, 'Mid-Range'));
-                grid[12].push(d.title ? d.title : 'Amazon Product');
-                grid[13].push(d.url || `https://www.amazon.com/dp/${d.asin}`);
+                grid[11].push(finalVolume);
+                grid[12].push(fNA(tier, 'Mid-Range'));
+                grid[13].push(d.title ? d.title : 'Amazon Product');
+                grid[14].push(d.url || `https://www.amazon.com/dp/${d.asin}`);
             }
             
             values.push(...grid);

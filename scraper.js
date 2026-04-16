@@ -20,20 +20,27 @@ function normalizeDimensions(dim) {
         .replace(/\s+/g, ' ')
         .trim();
     
-    // 2. Identify garbled patterns like "82x3lx3" or "4x86X6"
+    // 2. STRICT CHECK: Physical dimensions MUST have at least one 'x' (multiplier)
+    // If it's just "15 l" or "8 lbs", it is NOT a dimension.
+    if (!clean.includes(' x ')) {
+        return 'N/A';
+    }
+    
+    // 3. Identify garbled patterns like "82x3lx3" or "4x86X6"
     // If it lacks units AND spaces AND dots, it's likely garbage from a bad table parse
     const isGarbage = (clean.match(/^\d+x\d+x\d+[a-z]?$/i) || clean.match(/^\d+x\d+$/i)) && 
                      !clean.includes('.') && !clean.includes(' ') && !clean.includes('in');
     
     if (isGarbage) return 'N/A';
 
-    // 3. Fix minor alignment issues
-    clean = clean.replace(/(\d+)\s*x\s*(\d+)\s*x\s*(\d+)/g, '$1 x $2 x $3');
-    clean = clean.replace(/(\d+)\s*x\s*(\d+)/g, '$1 x $2');
+    // 4. Fix minor alignment issues using decimal-safe regex
+    clean = clean.replace(/(\d+\.?\d*)\s*x\s*(\d+\.?\d*)\s*x\s*(\d+\.?\d*)/g, '$1 x $2 x $3');
+    clean = clean.replace(/(\d+\.?\d*)\s*x\s*(\d+\.?\d*)/g, '$1 x $2');
 
-    // 4. Append inches if missing
+    // 5. Append inches if missing
     if (clean.includes(' x ') && !clean.includes('in') && !clean.includes('"') && !clean.includes('cm') && !clean.includes('mm')) {
-        clean += ' inches';
+        const parts = clean.split(';'); // Handle cases like "8.5 x 6 x 2; 5 lbs"
+        clean = parts[0].trim() + ' inches';
     }
 
     return clean || 'N/A';
@@ -178,20 +185,15 @@ class ScraperEngine {
             // Best effort product information
             if (structuredData.product_information) {
                 const info = structuredData.product_information;
-                // Package dimensions field often contains "L x W x H; WeightUnit" — split them
                 const pkgDimStr = info.package_dimensions || info.item_dimensions || '';
                 if (pkgDimStr) {
-                    // Dimensions: e.g. "8.03 x 6.57 x 0.75 inches"
                     const mDim = pkgDimStr.match(/([\d.]+\s*x\s*[\d.]+\s*x\s*[\d.]+\s*(?:inches|in|cm|mm))/i);
                     if (mDim) data.dimensions = mDim[1];
-                    // Weight often after semicolon: "8.03 x 6.57 x 0.75 inches; 11.85 ounces"
                     const mWeight = pkgDimStr.match(/;\s*([\d.]+\s*(?:ounces|oz|pounds|lbs|grams|g|kg))/i)
                         || pkgDimStr.match(/([\d.]+\s*(?:ounces|oz|pounds|lbs|grams|g|kg))/i);
                     if (mWeight) data.weight = mWeight[1].trim();
                 }
-                // Fallback: item_weight field
                 if (data.weight === 'N/A' && info.item_weight) data.weight = info.item_weight;
-
                 const bsrRaw = info.best_sellers_rank;
                 if (bsrRaw) {
                     const bsrStr = Array.isArray(bsrRaw) ? bsrRaw.join(' ') : String(bsrRaw);
@@ -200,6 +202,10 @@ class ScraperEngine {
                 }
             }
             if (structuredData.sales_volume) data.boughtPastMonth = structuredData.sales_volume;
+            
+            // VOLUME FALLBACK (JSON)
+            const jsonVolMatch = (data.title + ' ' + (structuredData.product_information?.item_dimensions || '')).match(/(\d+\.?\d*\s?(gallon|gal|liters?|l|ml|fl\s?oz|ounce|oz))/i);
+            if (jsonVolMatch) data.volume = jsonVolMatch[0];
         }
 
         // Quality Check & Robust Fallback (Layer 3: Browser Rendering)
@@ -228,7 +234,7 @@ class ScraperEngine {
             return { asin, status: 'NO_PRODUCT', reason: 'Page loaded but no product details found' };
         }
 
-        return { asin, status: 'SUCCESS', data };
+        return { asin, status: 'SUCCESS', data, rawText: html };
     }
 
     extractWithCheerio(html, asin, structuredData = null) {
@@ -455,11 +461,33 @@ class ScraperEngine {
         const sizeMatch = combinedText.match(/(\d+\.?\d*\s?(lbs?|oz|lb|kg|g|fl\s?oz|count|ct))/i);
         if (sizeMatch) results.size = cleanText(sizeMatch[0]);
 
-        // PROJECT 2 EXTENSIONS: Dimensions, Weight
-        // PROJECT 2 EXTENSIONS: Dimensions, Weight
+        // PROJECT 2 EXTENSIONS: Dimensions, Weight, Volume
         let actualSize = details['size'] ? cleanText(details['size']) : 'N/A';
-        if (actualSize === 'N/A') {
-            const titleMatch = results.title.match(/(\d+\.?\d*\s?(gallon|gal|liters?|l|ml|fl\s?oz|oz|count|ct|pack))/i);
+        results.volume = 'N/A';
+        
+        // Extract Volume or Count from title (e.g., 2.5 Gallon, 500ml, 16 fl oz, 100 Count, 150 Strips)
+        const volumeMatch = results.title.match(/(\d+\.?\d*\s?(gallon|gal|liters?|l|ml|fl\s?oz|ounce|oz|count|ct|strips?|pieces?))/i);
+        if (volumeMatch) {
+            results.volume = cleanText(volumeMatch[0]);
+        }
+
+        // Deep Search: If Volume is still N/A, check ALL technical detail keys for liters/gallons
+        if (results.volume === 'N/A') {
+            for (const key in details) {
+                const val = details[key];
+                const volLook = val.match(/(\d+\.?\d*\s?(gallon|gal|liters?|l|ml|fl\s?oz|ounce|oz))/i);
+                // If it looks like a volume and DOES NOT look like dimensions (no 'x')
+                if (volLook && !val.includes(' x ')) {
+                    results.volume = cleanText(volLook[0]);
+                    break;
+                }
+            }
+        }
+
+        if (actualSize === 'N/A' && results.volume !== 'N/A') {
+            actualSize = results.volume;
+        } else if (actualSize === 'N/A') {
+            const titleMatch = results.title.match(/(\d+\.?\d*\s?(count|ct|pack))/i);
             if (titleMatch) actualSize = cleanText(titleMatch[0]);
         }
         const dimKeys = ['product dimensions', 'item dimensions lxwxh', 'package dimensions', 'dimensions', 'item dimensions'];

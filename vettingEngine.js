@@ -1,5 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const logger = require('./logger');
+const utils = require('./utils');
+
 
 class VettingEngine {
     constructor() {
@@ -63,6 +65,11 @@ class VettingEngine {
                                 (productData.dimensions.match(/\d+/) && !productData.dimensions.includes(' ')) ||
                                 productData.dimensions.length < 5;
 
+        // NEW: Detect suspicious volume
+        const isSuspiciousVolume = !productData.volume || 
+                                   productData.volume === 'N/A' || 
+                                   productData.volume === '-';
+
         const isSuspiciousSales = !productData.boughtPastMonth || 
                                   productData.boughtPastMonth === 'N/A' || 
                                   productData.boughtPastMonth === '-' ||
@@ -71,37 +78,48 @@ class VettingEngine {
         const missingFields = [];
         if (isSuspiciousDim) missingFields.push('Dimensions (LxWxH)');
         if (isSuspiciousWeight) missingFields.push('Item Weight');
+        if (isSuspiciousVolume) missingFields.push('Item Volume');
         if (isSuspiciousSales) missingFields.push('Monthly Sales Volume');
 
         if (missingFields.length === 0) return productData;
 
-        logger.info(`[VETTING] HEALING: ${productData.asin} has suspicious [${missingFields.join(', ')}]. Analyzing raw page text...`);
+        const hasFullText = rawText && rawText.length > 500;
+        logger.info(`[VETTING] HEALING: ${productData.asin} has suspicious [${missingFields.join(', ')}]. Context: ${hasFullText ? 'Full Page HTML' : 'Title Only'}`);
 
-        // Use a massive context window for accuracy
-        const snip = rawText.substring(0, 40000); 
+        // Prioritize technical sections for the snippet
+        let snip = productData.title;
+        if (hasFullText) {
+            // Try to find the technical specs section to keep the most relevant info in the 40k window
+            const specsIndex = rawText.toLowerCase().indexOf('product information') || rawText.toLowerCase().indexOf('technical details') || 0;
+            snip = rawText.substring(Math.max(0, specsIndex - 500), Math.max(0, specsIndex - 500) + 40000);
+        }
 
         const prompt = `You are a high-precision marketplace data auditor. 
 Analyze the provided raw Amazon page text for the product: "${productData.title}" (ASIN: ${productData.asin}).
 
-TASK: Extract or Derive the EXACT technical specifications.
+TECHNICAL ANCHORS (USE THESE TO INFORM ESTIMATES):
+- Known Volume: ${productData.volume || 'N/A'}
+- Known Weight: ${productData.weight || 'N/A'}
+- Product Price: ${productData.price || 'N/A'}
+
+TASK: Extract exactly from Technical Details or Product Information tables.
+If volume/capacity is missing from tables, scan the Title and Bullet points for liquid measures (e.g. 1.7 oz, 50ml, 1 Gallon) OR solid counts (e.g. 150 Strips, 100 Count).
 
 CRITICAL RULES:
-1. Look for "Product Dimensions", "Package Dimensions", or weight values in the technical tables first.
-2. Look for "Size:", "Item Weight:", or "Dimensions:" in the bullet points or product description.
-3. IF DATA IS MISSING OR OBSCURED: Provide a LOGICAL ESTIMATE based on the product category and your market knowledge for this specific brand/item. 
-4. DO NOT use "N/A", "-", or ANY conversational text (e.g. "I cannot determine"). Every field must be a valid string or number.
-5. If the monthly sales volume (e.g. "500+ bought in past month") is present but garbled, extract it clearly.
-6. MANDATORY: Respond with ONLY THE JSON. NO APOLOGIES. NO EXPLANATIONS.
+1. Locate "Product Dimensions", "Package Dimensions", "Volume", "Count", or weight values.
+2. If Volume is N/A in anchors, find it in the provided TEXT SNIPPET. 
+3. If it's a dry item, use the count/strips (e.g., "150 Count").
+4. If still missing, provide a high-fidelity LOGICAL ESTIMATE. 
+5. NO PLACEHOLDERS. DO NOT use generic values like "8.5 x 6 x 2.5".
+6. Respond with ONLY THE JSON.
 
-Return ONLY a JSON object: {"dimensions": "X.X x Y.Y x Z.Z inches", "weight": "X.X lbs", "boughtPastMonth": "X+ bought in past month"}
-
-TEXT SNIPPET:
-${snip}`;
+Return ONLY a JSON object: {"dimensions": "X.X x Y.Y x Z.Z inches", "weight": "X.X lbs", "volume": "X.X oz/gal/ml/Count", "boughtPastMonth": "X+ bought in past month"}
+(Note: Always include units like "oz", "lbs", "Count", or "inches")`;
 
         try {
             const res = await this.callClaude({
-                messages: [{ role: 'user', content: prompt }],
-                max_tokens: 300
+                messages: [{ role: 'user', content: prompt + `\n\nTEXT SNIPPET:\n${snip}` }],
+                max_tokens: 350
             });
 
             const content = res.content[0].text;
@@ -115,6 +133,7 @@ ${snip}`;
                 healed = {
                     dimensions: (content.match(/"dimensions"\s*:\s*"([^"]+)"/) || [])[1],
                     weight: (content.match(/"weight"\s*:\s*"([^"]+)"/) || [])[1],
+                    volume: (content.match(/"volume"\s*:\s*"([^"]+)"/) || [])[1],
                     boughtPastMonth: (content.match(/"boughtPastMonth"\s*:\s*"([^"]+)"/) || [])[1]
                 };
             }
@@ -124,9 +143,10 @@ ${snip}`;
 
             if (!isInvalid(healed.dimensions)) productData.dimensions = healed.dimensions;
             if (!isInvalid(healed.weight)) productData.weight = healed.weight;
+            if (!isInvalid(healed.volume)) productData.volume = healed.volume;
             if (!isInvalid(healed.boughtPastMonth)) productData.boughtPastMonth = healed.boughtPastMonth;
 
-            logger.info(`[VETTING] HEAL SUCCESS: ${productData.asin} dimensions: ${productData.dimensions}, weight: ${productData.weight}`);
+            logger.info(`[VETTING] HEAL SUCCESS: ${productData.asin} dim: ${productData.dimensions}, weight: ${productData.weight}, vol: ${productData.volume}`);
             return productData;
         } catch (err) {
             logger.warn(`[VETTING] Healing failed for ${productData.asin}: ${err.message}`);
@@ -273,7 +293,44 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
     }
 
     /**
+     * Helper to extract standardized size from title or scraped size field
+     */
+    _extractSize(title, scrapedSize) {
+        if (!title) return scrapedSize || 'N/A';
+        
+        // 1. If scraped size is already good, use it (but normalize)
+        let size = scrapedSize && scrapedSize !== 'N/A' ? scrapedSize : '';
+        
+        // 2. Regex for volume/weight sizes (Gallons, Oz, Lbs, etc.)
+        const volumeRegex = /(\d+\.?\d*\s*(?:gallon|gal|liters?|l|ml|fl\s?oz|oz|ounce|pound|lb|lbs|kg|grams|g))\b/i;
+        const packRegex = /(\d+\s*(?:pack|count|ct|pcs|pieces))\b/i;
+        const kitRegex = /(\d+\s*(?:way|in\s*1|in\s*one|test|feature|func|component))\b/i;
+        
+        const titleMatch = title.match(volumeRegex) || title.match(packRegex) || title.match(kitRegex);
+        if (titleMatch) {
+            size = titleMatch[1];
+        } else if (!size) {
+            // Last resort for size check
+            const genericMatch = title.match(/(\d+\s*(?:unit|can|bottle|jar))/i);
+            if (genericMatch) size = genericMatch[1];
+        }
+
+        // Normalize
+        size = size.toLowerCase()
+            .replace(/\s+/g, ' ')
+            .replace(/gallons?/i, 'Gallon')
+            .replace(/gal\b/i, 'Gallon')
+            .replace(/\boz\b|\bounces?\b/i, 'oz')
+            .replace(/\bpounds?\b|\blbs?\b/i, 'lb')
+            .trim();
+            
+        // Capitalize first letter of each word for clean display
+        return size ? size.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : 'Standard Size';
+    }
+
+    /**
      * Pre-compute deterministic, realistic sales velocity baselines for Six10 product launches.
+
      *
      * SIX10 DEBRIEF — Dynamic Category Scaling:
      *   - Market volume is product-dependent; we use relative capture instead of hard caps.
@@ -340,14 +397,57 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
                 // ML: ~50% of market share capture (Realistic Entry)
                 // BC: ~100% of competitor's volume (Market Parity / Dominance)
                 launchMostLikely: Math.max(1, Math.round(competitorAdjustedDaily * 0.50)), 
-                launchBestCase:   Math.max(1, Math.round(competitorAdjustedDaily * 1.00)) 
+                launchBestCase:   Math.max(1, Math.round(competitorAdjustedDaily * 1.00)),
+                size: this._extractSize(d.title, d.size)
             };
         }).filter(Boolean);
 
         if (parsed.length === 0) {
             logger.warn('[VETTING] No badge data found — using Six10 conservative defaults (15/35).');
-            return { mostLikely: 15, bestCase: 35, perCompetitor: [] };
+            return { mostLikely: 15, bestCase: 35, perCompetitor: [], sizePotential: {} };
         }
+
+        // Calculate Revenue and Group by Size for Volume Potential
+        // Note: We use a default 365 days for this market comparison
+        const sizeGroups = {};
+        parsed.forEach(c => {
+            const annualRev = c.competitorAdjustedDaily * c.price * 365;
+            const projectedFba = this.calculateFBAFee(c.data || c);
+            c.estimatedAnnualRevenue = annualRev;
+            
+            if (!sizeGroups[c.size]) {
+                sizeGroups[c.size] = {
+                    totalRevenue: 0,
+                    competitorCount: 0,
+                    avgPrice: 0,
+                    totalPrice: 0,
+                    avgFbaFee: 0,
+                    totalFbaFee: 0
+                };
+            }
+            sizeGroups[c.size].totalRevenue += annualRev;
+            sizeGroups[c.size].competitorCount += 1;
+            sizeGroups[c.size].totalPrice += c.price;
+            sizeGroups[c.size].totalFbaFee += projectedFba;
+            sizeGroups[c.size].avgPrice = sizeGroups[c.size].totalPrice / sizeGroups[c.size].competitorCount;
+            sizeGroups[c.size].avgFbaFee = sizeGroups[c.size].totalFbaFee / sizeGroups[c.size].competitorCount;
+        });
+
+        // Identify the "Winner" size (Highest Revenue modified by "FBA Efficiency" — thinking about dimensions)
+        let recommendedSize = 'Standard Size';
+        let maxViabilityScore = 0;
+        Object.keys(sizeGroups).forEach(size => {
+            const group = sizeGroups[size];
+            // Viability Score = Revenue * (1 - estimated FBA impact on price)
+            // This weighs smaller, lighter items (lower FBA fee relative to price) more favorably
+            const fbaImpact = group.avgFbaFee / group.avgPrice;
+            const viabilityScore = group.totalRevenue * (1 - fbaImpact);
+            
+            if (viabilityScore > maxViabilityScore) {
+                maxViabilityScore = viabilityScore;
+                recommendedSize = size;
+            }
+        });
 
         // Sort by competitorAdjustedDaily descending (strongest to weakest)
         parsed.sort((a, b) => b.competitorAdjustedDaily - a.competitorAdjustedDaily);
@@ -359,9 +459,15 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         // Best Case = Professional launch capture (30% of market leader)
         const bestCase = parsed[0].launchBestCase;
         
-        logger.info(`[VETTING] Dynamic Baseline — Top Comp: ${parsed[0].competitorAdjustedDaily}/day, ML=${mostLikely}/day, BC=${bestCase}/day`);
+        logger.info(`[VETTING] Dynamic Baseline — Top Comp: ${parsed[0].competitorAdjustedDaily}/day, ML=${mostLikely}/day, BC=${bestCase}/day | Recommended Size: ${recommendedSize}`);
 
-        return { mostLikely, bestCase, perCompetitor: parsed };
+        return { 
+            mostLikely, 
+            bestCase, 
+            perCompetitor: parsed, 
+            sizePotential: sizeGroups,
+            recommendedSize 
+        };
     }
 
     /**
@@ -433,12 +539,12 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         OUTPUT: Respond with ONLY valid raw JSON — no markdown, no explanation, no code blocks.
         {
           "classifications": [{"asin": "B0...", "brand": "Brand", "tier": "Mid-Range", "reasoning": "..."}],
-          "targetSize": "1 Gallon",
+          "targetSize": "${velocity.recommendedSize}",
           "targetPrice": 24.99,
           "pricingReasoning": "...",
           "mostLikelyUnitsPerDay": ${velocity.mostLikely},
           "bestCaseUnitsPerDay": ${velocity.bestCase},
-          "salesReasoning": "...",
+          "salesReasoning": "The market data shows that the ${velocity.recommendedSize} size has the highest total volume potential ($${Math.round(velocity.sizePotential[velocity.recommendedSize]?.totalRevenue || 0).toLocaleString()} aggregated annual revenue across competitors). ...",
           "seasonality": "365",
           "seasonalityReasoning": "Year-round consumable with consistent DJ/professional use as seen in BSR stability.",
           "baseballCategory": "Single",
@@ -754,7 +860,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
                 tier: 'Mid-Range',
                 reasoning: 'Auto-classified via Market Engine V2.'
             })),
-            targetSize: competitorData[0]?.data?.title?.match(/(\d+\s*(oz|ounce|gal|gallon|lb|pound|pack))/i)?.[0] || 'Standard Size',
+            targetSize: velocity.recommendedSize,
             targetPrice,
             estimatedUnitsPerDay: velocity.mostLikely,
             mostLikelyUnitsPerDay: velocity.mostLikely,

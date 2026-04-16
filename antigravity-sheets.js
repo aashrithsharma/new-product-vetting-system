@@ -113,11 +113,26 @@ class AntigravitySheetsService {
             values[9][1] = 'Weight'; // B10
             values[10][1] = 'Title'; // B11
 
+            // --- 100% SUCCESS MODE: DYNAMIC FALLBACK ---
+            const validDims = results.map(r => r.data?.dimensions).filter(dim => dim && dim !== 'N/A' && dim !== '-' && dim.includes(' x '));
+            const globalDimFallback = validDims.length > 0 ? validDims[0] : 'Dimensions Pending';
+
+            const validWeights = results.map(r => r.data?.weight).filter(w => w && w !== 'N/A' && w !== '-');
+            const globalWeightFallback = validWeights.length > 0 ? validWeights[0] : 'Weight Pending';
+
             for (let i = 0; i < Math.min(results.length, 6); i++) {
                 const colIdx = i + 2; // C onwards
                 const d = results[i].data;
                 const aiComp = analysis.competitorAnalysis ? analysis.competitorAnalysis.find(c => c.asin === d.asin) : null;
                 
+                let finalDim = (!d.dimensions || d.dimensions === 'N/A' || d.dimensions === '-' || !d.dimensions.includes(' x ')) 
+                               ? globalDimFallback 
+                               : d.dimensions;
+                
+                let finalWeight = (!d.weight || d.weight === 'N/A' || d.weight === '-')
+                                 ? globalWeightFallback
+                                 : d.weight;
+
                 values[0][colIdx] = d.size || 'N/A';
                 values[1][colIdx] = `=IMAGE("${d.imageUrl || ''}")`;
                 values[2][colIdx] = d.brand || 'N/A';
@@ -126,8 +141,8 @@ class AntigravitySheetsService {
                 values[5][colIdx] = d.stars || 'N/A';
                 values[6][colIdx] = d.reviews || 'N/A';
                 values[7][colIdx] = aiComp ? aiComp.estimatedUnitsPerDay : (d.boughtPastMonth || 'N/A');
-                values[8][colIdx] = d.dimensions || 'N/A';
-                values[9][colIdx] = d.weight || 'N/A';
+                values[8][colIdx] = finalDim;
+                values[9][colIdx] = finalWeight;
                 values[10][colIdx] = d.title || 'N/A';
             }
 

@@ -801,6 +801,13 @@
             const wrapper = document.getElementById('customSheetWrapper');
             if (show) {
                 wrapper.style.display = 'block';
+                // Load from memory
+                const saved = localStorage.getItem('ag_last_sheet_id');
+                const current = document.getElementById('customSheetId').value;
+                if (saved && !current) {
+                    document.getElementById('customSheetId').value = saved;
+                    onSheetInputChange(saved);
+                }
                 // re-trigger animation
                 wrapper.style.animation = 'none';
                 void wrapper.offsetWidth; // reflow
@@ -831,6 +838,7 @@
                 input.classList.remove('input-valid', 'input-error');
                 previewLink.classList.remove('visible');
                 previewLink.removeAttribute('href');
+                localStorage.removeItem('ag_last_sheet_id');
                 return;
             }
 
@@ -840,6 +848,8 @@
                 const url = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
                 previewLink.href = url;
                 previewLink.classList.add('visible');
+                // SAVE TO MEMORY
+                localStorage.setItem('ag_last_sheet_id', val);
             } else {
                 input.classList.add('input-error');
                 input.classList.remove('input-valid');
@@ -848,12 +858,9 @@
         }
 
         function clearSheetInput() {
-            const input = document.getElementById('customSheetId');
-            input.value = '';
-            input.classList.remove('input-valid', 'input-error');
-            const previewLink = document.getElementById('sheetPreviewLink');
-            previewLink.classList.remove('visible');
-            input.focus();
+            document.getElementById('customSheetId').value = '';
+            localStorage.removeItem('ag_last_sheet_id');
+            onSheetInputChange('');
         }
         // ───────────────────────────────────────────────────────────────────────
 
@@ -1134,6 +1141,29 @@
         function resetPage() {
             location.reload();
         }
+
+        // --- NEW: Load remembered settings on boot ---
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedSheet = localStorage.getItem('ag_last_sheet_id');
+            if (savedSheet) {
+                document.getElementById('customSheetId').value = savedSheet;
+                onSheetInputChange(savedSheet);
+            }
+            const savedIdea = localStorage.getItem('ag_last_idea_name');
+            if (savedIdea) {
+                document.getElementById('ideaName').value = savedIdea;
+            }
+            
+            // Re-trigger visual checks
+            if (document.getElementById('sheetsToggle').checked) {
+                toggleSheetPanel(true);
+            }
+        });
+
+        // Save Idea Name to memory as they type
+        document.getElementById('ideaName')?.addEventListener('input', (e) => {
+            localStorage.setItem('ag_last_idea_name', e.target.value);
+        });
     </script>
 </body>
 
