@@ -443,7 +443,9 @@ class Orchestrator {
                 success: currentRun.succeededAsins,
                 failed: currentRun.failedAsins,
                 blocked: currentRun.blockedAsins
-            } : null
+            } : null,
+            defaultSheetId: config.google.sheetId,
+            robotEmail: sheets.getServiceAccountEmail()
         };
     }
 
