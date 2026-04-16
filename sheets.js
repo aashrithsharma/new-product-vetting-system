@@ -106,8 +106,7 @@ class SheetsService {
                     spreadsheetId,
                     resource: {
                         requests: [
-                            { addSheet: { properties: { sheetId: targetSheetId, title: targetSheetTitle, index: 0 } } },
-                            { updateSheetProperties: { fields: "index", properties: { sheetId: targetSheetId, index: 0 } } }
+                            { addSheet: { properties: { sheetId: targetSheetId, title: targetSheetTitle, index: 0 } } }
                         ]
                     }
                 });
@@ -115,26 +114,27 @@ class SheetsService {
             } else {
                 targetSheetId = existingTarget.properties.sheetId;
                 logger.info(`[SHEETS] Using existing target tab: ${targetSheetTitle}`);
-                // Clear and move to front
+                // Clear and move to front in ONE call
                 await this.sheets.spreadsheets.batchUpdate({
                     spreadsheetId,
                     resource: {
                         requests: [
-                            { updateSheetProperties: { fields: "index", properties: { sheetId: targetSheetId, index: 0 } } }
+                            { updateSheetProperties: { fields: "index", properties: { sheetId: targetSheetId, index: 0 } } },
+                            { updateCells: { range: { sheetId: targetSheetId }, fields: "*" } } // Faster than clear for formatting
                         ]
                     }
                 });
                 await this.sheets.spreadsheets.values.clear({ spreadsheetId, range: `'${targetSheetTitle}'!A1:ZZ1000` });
             }
 
-
-            // Clear existing content and unmerge
-            await this.sheets.spreadsheets.values.clear({ spreadsheetId, range: `'${targetSheetTitle}'!A1:ZZ1000` });
+            // Note: Content and unmerge already handled above if existing, or fresh if new.
             try {
-                await this.sheets.spreadsheets.batchUpdate({
-                    spreadsheetId,
-                    resource: { requests: [{ unmergeCells: { range: { sheetId: targetSheetId } } }] }
-                });
+                if (!existingTarget) {
+                    await this.sheets.spreadsheets.batchUpdate({
+                        spreadsheetId,
+                        resource: { requests: [{ unmergeCells: { range: { sheetId: targetSheetId } } }] }
+                    });
+                }
             } catch(e) {}
 
 
