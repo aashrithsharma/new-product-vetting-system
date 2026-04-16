@@ -115,12 +115,14 @@ class Orchestrator {
 
                         // HEALING PASS: Target 100% success for Dimensions, Weight, and Volume
                         const d = result.data;
-                        const needsHealing = !d.dimensions || d.dimensions === 'N/A' || d.dimensions === '-' || !d.dimensions.includes(' x ') ||
-                                             !d.weight || d.weight === 'N/A' || d.weight === '-' ||
-                                             !d.volume || d.volume === 'N/A' || d.volume === '-';
-                        
-                        if (result.status === 'SUCCESS' && needsHealing) {
-                            await vettingEngine.healProductData(result.data, result.rawText || '');
+                        if (result.status === 'SUCCESS' && d) {
+                            const needsHealing = !d.dimensions || d.dimensions === 'N/A' || d.dimensions === '-' || !d.dimensions.includes(' x ') ||
+                                                 !d.weight || d.weight === 'N/A' || d.weight === '-' ||
+                                                 !d.volume || d.volume === 'N/A' || d.volume === '-';
+                            
+                            if (needsHealing) {
+                                await vettingEngine.healProductData(result.data, result.rawText || '');
+                            }
                         }
 
                         run.results.push(result);
