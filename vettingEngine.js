@@ -452,9 +452,12 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         // Sort by competitorAdjustedDaily descending (strongest to weakest)
         parsed.sort((a, b) => b.competitorAdjustedDaily - a.competitorAdjustedDaily);
 
-        // Most Likely = Average entry capture (10% of top volume)
-        const top3 = parsed.slice(0, Math.min(3, parsed.length));
-        const mostLikely = Math.round(top3.reduce((s, c) => s + c.launchMostLikely, 0) / top3.length);
+        // Most Likely = Median capture of top performers (more robust than average)
+        const top5 = parsed.slice(0, Math.min(5, parsed.length));
+        top5.sort((a, b) => a.launchMostLikely - b.launchMostLikely);
+        const mostLikely = top5.length > 0 
+            ? top5[Math.floor(top5.length / 2)].launchMostLikely 
+            : 15;
 
         // Best Case = Professional launch capture (30% of market leader)
         const bestCase = parsed[0].launchBestCase;
