@@ -219,12 +219,12 @@ class SheetsService {
                     }
                 }
 
-                // If estSales still doesn't have a value, default to a conservative estimate
+                // If estSales still doesn't have a value, use AI vetting estimation or mark as Pending
                 if (estSales === '-' || estSales === '—') {
                     if (ai && ai.estimatedUnitsPerDay) {
                          estSales = `Est. ${Math.floor(ai.estimatedUnitsPerDay)} / day`;
                     } else {
-                         estSales = `Est. 30 / day`;
+                         estSales = `Check Amazon / BSR`; // REPLACED: No more guessing '30'
                     }
                 } else if (estSales.startsWith('~')) {
                     estSales = estSales.replace('~', 'Est. ');

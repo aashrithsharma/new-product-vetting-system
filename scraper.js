@@ -580,7 +580,10 @@ class ScraperEngine {
             '#social-proofing-faceout-title-tk_bought',
             '#social-proofing-faceout-title-tk_bought_1_faceout',
             '.social-proofing-faceout-title-text',
-            '#social-proofing-faceout-title-tk_bought span'
+            '#social-proofing-faceout-title-tk_bought span',
+            'span[data-component-type="s-social-proofing-faceout"] span',
+            '#social-proofing-tk-bought-past-month',
+            '.a-size-small.a-color-secondary .a-text-bold' // Often where "1K+ bought" sits
         ];
         
         let boughtTextRaw = '';

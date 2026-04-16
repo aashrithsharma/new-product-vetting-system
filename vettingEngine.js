@@ -352,21 +352,27 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
             const badge    = d.boughtPastMonth || 'N/A';
             const bsr      = parseInt(String(d.bsr || '0').replace(/[^0-9]/g, '')) || 0;
 
-            // Step 1: Badge → baseline daily units
+            // Step 1: Badge → baseline daily units (with BSR fallback)
             let badgeDaily = null;
-            // Match patterns: "1K+", "5K+", "500+", "1,200", plain numbers
             const badgeMatch = badge.match(/([\d.]+)\s*([Kk])\+?|(\d[\d,]*)\+?/);
             if (badgeMatch) {
                 let num;
                 if (badgeMatch[1] && badgeMatch[2]) {
-                    num = parseFloat(badgeMatch[1]) * 1000; // e.g. 1K = 1000
+                    num = parseFloat(badgeMatch[1]) * 1000;
                 } else if (badgeMatch[3]) {
                     num = parseFloat(badgeMatch[3].replace(/,/g, ''));
                 }
                 if (num && num > 0) badgeDaily = Math.round(num / 30);
             }
 
-            if (badgeDaily === null) return null; // No badge data — skip competitor
+            // Fallback to BSR estimation if badge is missing to ensure a complete market view
+            if (badgeDaily === null && bsr > 0) {
+                const { estimateDailySales } = require('./bsr');
+                const est = estimateDailySales(bsr);
+                if (typeof est === 'number' && est > 0) badgeDaily = est;
+            }
+
+            if (badgeDaily === null) return null; // Still nothing? Skip.
 
             // Step 2: BSR multiplier (small adjustment only)
             let bsrMultiplier = 1.0;
@@ -393,11 +399,10 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
                 badgeDaily,
                 bsrAdjusted,
                 competitorAdjustedDaily,
-                // Dynamic Market Capture Factors (SIX10 RELATIVE CAPTURE)
-                // ML: ~50% of market share capture (Realistic Entry)
-                // BC: ~100% of competitor's volume (Market Parity / Dominance)
-                launchMostLikely: Math.max(1, Math.round(competitorAdjustedDaily * 0.50)), 
-                launchBestCase:   Math.max(1, Math.round(competitorAdjustedDaily * 1.00)),
+                // ML: ~75% of market share capture (Strong Mid-Premium entry)
+                // BC: ~125% of competitor's volume (Market Leadership)
+                launchMostLikely: Math.max(1, Math.round(competitorAdjustedDaily * 0.75)), 
+                launchBestCase:   Math.max(1, Math.round(competitorAdjustedDaily * 1.25)),
                 size: this._extractSize(d.title, d.size)
             };
         }).filter(Boolean);
