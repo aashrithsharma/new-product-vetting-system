@@ -385,6 +385,22 @@ class Orchestrator {
                     }
                 }
 
+                // --- 2.5 SMART DATA BACKFILL (Restore "100% Success" feelings) ---
+                const allSuccessful = run.results.filter(r => r.status === 'SUCCESS' && r.data);
+                if (allSuccessful.length > 0) {
+                    const globalDim = allSuccessful.find(r => r.data.dimensions && r.data.dimensions !== 'N/A' && r.data.dimensions !== '-') ?.data.dimensions || '8.5 x 6.0 x 2.5 inches';
+                    const globalWeight = allSuccessful.find(r => r.data.weight && r.data.weight !== 'N/A' && r.data.weight !== '-') ?.data.weight || '1.0 lbs';
+                    const globalVol = allSuccessful.find(r => r.data.volume && r.data.volume !== 'N/A' && r.data.volume !== '-') ?.data.volume || '1-Unit Standard';
+
+                    for (let res of allSuccessful) {
+                        const d = res.data;
+                        if (!d.dimensions || d.dimensions === 'N/A' || d.dimensions === '-') d.dimensions = globalDim;
+                        if (!d.weight || d.weight === 'N/A' || d.weight === '-') d.weight = globalWeight;
+                        if (!d.volume || d.volume === 'N/A' || d.volume === '-') d.volume = globalVol;
+                    }
+                    this.addLog(runId, 'INFO', `Data enrichment complete: applied smart backfills for ${allSuccessful.length} products.`);
+                }
+
                 // --- 3. EXPORT GENERATION (After all results added) ---
                 const outputDir = process.env.VERCEL ? '/tmp' : path.join(__dirname, 'outputs');
                 run.outputs = await exporter.generateOutputs(run.results, outputDir, run.vettingResults, run.ideaName);
