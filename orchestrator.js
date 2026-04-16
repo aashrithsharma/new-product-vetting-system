@@ -176,7 +176,7 @@ class Orchestrator {
                         const retryResult = await scraper.scrapeASIN(product);
                         retryResult.originalUrl = product.originalUrl;
 
-                        if (retryResult.status === 'SUCCESS') {
+                        if (retryResult.status === 'SUCCESS' && retryResult.data) {
                             // HEALING PASS: Target 100% success for Dimensions, Weight, and Volume
                             const d = retryResult.data;
                             const needsHealing = !d.dimensions || d.dimensions === 'N/A' || d.dimensions === '-' || !d.dimensions.includes(' x ') ||

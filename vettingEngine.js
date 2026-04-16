@@ -141,10 +141,12 @@ Return ONLY a JSON object: {"dimensions": "X.X x Y.Y x Z.Z inches", "weight": "X
             // CLEANER: Ensure Claude didn't sneak in conversational "Unable to determine" text
             const isInvalid = (val) => !val || val.toLowerCase().includes('unable') || val.toLowerCase().includes('determine') || val === 'N/A' || val === '-';
 
-            if (!isInvalid(healed.dimensions)) productData.dimensions = healed.dimensions;
-            if (!isInvalid(healed.weight)) productData.weight = healed.weight;
-            if (!isInvalid(healed.volume)) productData.volume = healed.volume;
-            if (!isInvalid(healed.boughtPastMonth)) productData.boughtPastMonth = healed.boughtPastMonth;
+            if (healed) {
+                if (!isInvalid(healed.dimensions)) productData.dimensions = healed.dimensions;
+                if (!isInvalid(healed.weight)) productData.weight = healed.weight;
+                if (!isInvalid(healed.volume)) productData.volume = healed.volume;
+                if (!isInvalid(healed.boughtPastMonth)) productData.boughtPastMonth = healed.boughtPastMonth;
+            }
 
             logger.info(`[VETTING] HEAL SUCCESS: ${productData.asin} dim: ${productData.dimensions}, weight: ${productData.weight}, vol: ${productData.volume}`);
             return productData;
