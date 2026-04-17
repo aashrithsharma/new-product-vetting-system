@@ -869,16 +869,28 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         const analysis = {
             classifications: competitorData.slice(0, 10).map(c => {
                 const p = parseFloat(String(c.data?.price || c.price || '0').replace(/[^0-9.]/g, '')) || 0;
+                
+                // Dynamic Range Calculation for Maximum Variety
+                const validPrices = competitorData.map(cc => parseFloat(String(cc.data?.price || cc.price || '0').replace(/[^0-9.]/g, ''))).filter(pp => pp > 0);
+                const minPrice = validPrices.length ? Math.min(...validPrices) : 10;
+                const maxPrice = validPrices.length ? Math.max(...validPrices) : 50;
+                const range = maxPrice - minPrice;
+                
                 let tier = 'Mid-Range';
-                if (p > 0 && targetPrice > 0) {
-                    if (p < targetPrice * 0.85) tier = 'Budget';
-                    else if (p > targetPrice * 1.15) tier = 'Premium';
+                if (range > 2) {
+                    if (p <= minPrice + (range * 0.25)) tier = 'Budget';
+                    else if (p >= maxPrice - (range * 0.25)) tier = 'Premium';
+                } else if (p > 0 && targetPrice > 0) {
+                    // Fallback to static if range is too narrow
+                    if (p < targetPrice * 0.90) tier = 'Budget';
+                    else if (p > targetPrice * 1.10) tier = 'Premium';
                 }
+                
                 return {
                     asin: c.asin || c.data?.asin,
                     brand: c.data?.brand || c.brand || 'Competitor',
                     tier,
-                    reasoning: `Auto-positioned based on price point ($${p}) relative to market median.`
+                    reasoning: `Auto-positioned based on price point ($${p}) relative to market spread ($${minPrice}-$${maxPrice}).`
                 };
             }),
             targetSize: velocity.recommendedSize,
