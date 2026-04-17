@@ -274,30 +274,46 @@ class Orchestrator {
                                 } catch (e2) { /* ignore broader search failure */ }
                             }
 
-                            // DEDUPLICATION: Ensure we don't have overlapping results between search passes
+                            // 1. DEDUPLICATION: Ensure we don't have overlapping results between search passes
                             const uniqueAsins = new Set();
-                            searchResults = searchResults.filter(r => {
+                            let unfilteredResults = searchResults.filter(r => {
                                 if (!r.asin || uniqueAsins.has(r.asin)) return false;
                                 uniqueAsins.add(r.asin);
                                 return true;
                             });
 
-                            // Pre-filter by price proximity (within ±70% of input price) - loosened to avoid total failure
+                            // 2. RELEVANCE FILTERING (Anti-Accessory Logic)
+                            const primaryTitle = (primary.data.title || '').toLowerCase();
+                            const exclusionKeywords = ['towel', 'cloth', 'brush', 'refill', 'kit', 'accessory', 'applicator', 'sponge', 'mitt', 'pad'];
+                            
+                            // Only exclude if the primary product is NOT one of these things
+                            const activeExclusions = exclusionKeywords.filter(k => !primaryTitle.includes(k));
+
+                            unfilteredResults = unfilteredResults.filter(r => {
+                                const t = (r.name || r.title || '').toLowerCase();
+                                // Skip if candidate is an accessory but primary is a main product
+                                if (activeExclusions.some(k => t.includes(k))) {
+                                    logger.info(`[ORCHESTRATOR] Filtering out accessory candidate: "${t}"`);
+                                    return false;
+                                }
+                                return true;
+                            });
+
+                            // 3. PRICE PROXIMITY FILTERING
                             const inputPrice = parseFloat(String(primary.data.price).replace(/[^0-9.]/g, '')) || 0;
-                            let candidates = searchResults.filter(r => r.asin && r.asin !== primary.data.asin);
+                            let candidates = unfilteredResults.filter(r => r.asin && r.asin !== primary.data.asin);
                             
                             if (inputPrice > 0) {
                                 const priceFiltered = candidates.filter(r => {
                                     const p = parseFloat(String(r.price).replace(/[^0-9.]/g, '')) || 0;
-                                    return p > 0 && p >= inputPrice * 0.3 && p <= inputPrice * 3.0; // Loosened from 0.4-1.6 to 0.3-3.0
+                                    return p > 0 && p >= inputPrice * 0.25 && p <= inputPrice * 4.0; // Dynamic Range for Variety
                                 });
-                                // Only use filtered results if we still have at least 3, otherwise stick to original candidates
-                                if (priceFiltered.length >= 3) {
+                                if (priceFiltered.length >= 4) {
                                     candidates = priceFiltered;
                                 }
                             }
 
-                            this.addLog(runId, 'INFO', `${candidates.length} candidates available for selection. Sending to Claude...`);
+                            this.addLog(runId, 'INFO', `${candidates.length} relevant candidates available for selection. Sending to Claude...`);
 
                             if (candidates.length > 0) {
                                 // Claude picks the top 5 most direct competitors
