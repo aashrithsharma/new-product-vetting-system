@@ -15,9 +15,19 @@ class SheetsService {
             if (!spreadsheetId) throw new Error('GOOGLE_SHEET_ID missing');
             let credentials;
             if (process.env.GOOGLE_CREDENTIALS) {
-                let cleanCreds = process.env.GOOGLE_CREDENTIALS.trim();
-                if (cleanCreds.startsWith('-')) cleanCreds = cleanCreds.substring(1).trim();
-                credentials = JSON.parse(cleanCreds);
+                try {
+                    let cleanCreds = process.env.GOOGLE_CREDENTIALS.trim();
+                    // Handle rare cases where env var gets prefixed with a hyphen or quoted incorrectly
+                    if (cleanCreds.startsWith('-')) cleanCreds = cleanCreds.substring(1).trim();
+                    // Handle cases where the JSON is already stringified but escaped
+                    if (cleanCreds.startsWith('"') && cleanCreds.endsWith('"')) {
+                        cleanCreds = JSON.parse(cleanCreds);
+                    }
+                    credentials = typeof cleanCreds === 'string' ? JSON.parse(cleanCreds) : cleanCreds;
+                } catch (e) {
+                    logger.error(`[SHEETS] Failed to parse GOOGLE_CREDENTIALS env var: ${e.message}`);
+                    throw new Error(`Google Credentials JSON invalid: ${e.message}`);
+                }
             } 
             // Priority 2: Individual keys in env (The Vercel way)
             else if (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
