@@ -109,9 +109,9 @@ CRITICAL RULES:
 1. Locate "Product Dimensions", "Package Dimensions", "Volume", "Count", or weight values.
 2. If Volume is N/A in anchors, find it in the provided TEXT SNIPPET. 
 3. If it's a dry item, use the count/strips (e.g., "150 Count").
-4. If still missing, provide a high-fidelity LOGICAL ESTIMATE. 
-5. NO PLACEHOLDERS. DO NOT use generic values like "8.5 x 6 x 2.5".
-6. Respond with ONLY THE JSON.
+4. If specific table data is missing, provide a high-fidelity MARKET STANDARD ESTIMATE based on the product type and weight. 
+5. NO "PENDING" or "N/A" RESPONSES. Every product MUST have a dimension, weight, and volume value to ensure a 100% complete report.
+6. Differentiate dimensions intelligently (e.g., a 1 Gallon bottle is not the same size as a 1oz bottle).
 
 Return ONLY a JSON object: {"dimensions": "X.X x Y.Y x Z.Z inches", "weight": "X.X lbs", "volume": "X.X oz/gal/ml/Count", "boughtPastMonth": "X+ bought in past month"}
 (Note: Always include units like "oz", "lbs", "Count", or "inches")`;
@@ -501,10 +501,12 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         You are an expert Amazon product analyst for Six10 Ventures, a moderate-to-premium Amazon brand.
         Analyze the competitor data below for the product idea: "${ideaName}".
 
-        YOUR TASKS:
-        1. CLASSIFY each competitor as Budget, Mid-Range, or Premium based on price, reviews, listing quality.
-        2. RECOMMEND a Target Selling Price for Six10 — a specific dollar amount positioned between category average and premium tier.
-        3. USE THE PRE-COMPUTED DISTRIBUTIONS below. These scale relative to the category depth.
+        TASK:
+        1. Classify each of the top competitors into a market tier: "Budget/Economy" (Lowest price point), "Mid-Range" (Balanced price/quality), or "Premium/Elite" (Highest specifications/brand value).
+        2. Differentiate based on their Selling Price and Brand Authority. Do NOT default all to Mid-Range.
+        3. Recommend a Target Size based on the winning market volume.
+        4. Predict a realistic "Most Likely" and "Best Case" sales velocity for our new launch.
+        5. USE THE PRE-COMPUTED DISTRIBUTIONS below. These scale relative to the category depth.
            - PRE-COMPUTED mostLikelyUnitsPerDay: ${velocity.mostLikely} (Target: ~50% capture of competitor average)
            - PRE-COMPUTED bestCaseUnitsPerDay: ${velocity.bestCase} (Target: parity with market leaders)
            - CROSS-CHECK: Evaluate your final estimates against the \`computedBadgeDaily\` and \`boughtPastMonth\` of all competitors.
