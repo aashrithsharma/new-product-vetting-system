@@ -867,12 +867,20 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         else baseballCategory = 'Less Than a Single';
 
         const analysis = {
-            classifications: competitorData.slice(0, 5).map(c => ({
-                asin: c.asin,
-                brand: c.data?.brand || c.brand || 'Competitor',
-                tier: 'Mid-Range',
-                reasoning: 'Auto-classified via Market Engine V2.'
-            })),
+            classifications: competitorData.slice(0, 10).map(c => {
+                const p = parseFloat(String(c.data?.price || c.price || '0').replace(/[^0-9.]/g, '')) || 0;
+                let tier = 'Mid-Range';
+                if (p > 0 && targetPrice > 0) {
+                    if (p < targetPrice * 0.75) tier = 'Budget';
+                    else if (p > targetPrice * 1.30) tier = 'Premium';
+                }
+                return {
+                    asin: c.asin || c.data?.asin,
+                    brand: c.data?.brand || c.brand || 'Competitor',
+                    tier,
+                    reasoning: `Auto-positioned based on price point ($${p}) relative to market median.`
+                };
+            }),
             targetSize: velocity.recommendedSize,
             targetPrice,
             estimatedUnitsPerDay: velocity.mostLikely,

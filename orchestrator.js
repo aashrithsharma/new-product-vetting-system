@@ -396,15 +396,22 @@ class Orchestrator {
                     // 1. FINAL RECOVERY: Use title keywords + weight to fill remaining gaps
                     if (!hasValidDim) {
                         const t = (d.title + ' ' + (d.volume || '')).toLowerCase();
-                        if (t.includes('gallon') || t.includes('128 oz')) d.dimensions = '12.0 x 12.0 x 6.0 inches';
-                        else if (t.includes('32 oz') || t.includes('quart')) d.dimensions = '9.5 x 3.5 x 3.5 inches';
-                        else if (t.includes('16 oz') || t.includes('pint')) d.dimensions = '8.0 x 3.0 x 3.0 inches';
-                        else if (t.includes('lb') || t.includes('kg')) d.dimensions = '10.5 x 7.5 x 4.0 inches';
-                        else d.dimensions = '8.5 x 6.0 x 2.5 inches'; // Default specialized for smaller items
+                        const wStr = String(d.weight || '').toLowerCase();
+                        const wVal = parseFloat(wStr.replace(/[^0-9.]/g, '')) || 0;
+                        const isOz = wStr.includes('oz') || wStr.includes('ounce');
+
+                        if (t.includes('gallon') || t.includes('128 oz')) d.dimensions = '12.0 x 12.0 x 6.5 inches';
+                        else if (t.includes('32 oz') || t.includes('quart')) d.dimensions = '9.4 x 3.6 x 3.6 inches';
+                        else if (t.includes('16 oz') || t.includes('pint')) d.dimensions = '8.2 x 3.1 x 3.1 inches';
+                        else if (wVal >= 10 && !isOz) d.dimensions = '15.0 x 11.0 x 8.0 inches'; // Bulky
+                        else if (wVal >= 3 && !isOz) d.dimensions = '10.5 x 7.5 x 4.2 inches';  // Mid-size
+                        else if (isOz && wVal < 2) d.dimensions = '4.5 x 1.5 x 1.5 inches';     // Very Small (Bottles/Packs)
+                        else if (isOz && wVal < 8) d.dimensions = '6.5 x 2.5 x 2.5 inches';     // Small
+                        else d.dimensions = '8.5 x 6.0 x 2.5 inches'; // Standard Flat Pack
                     }
 
                     if (!hasValidVol) {
-                        const volMatch = d.title.match(/(\d+\.?\d*\s?(oz|fl\s?oz|ml|gallon|gal|lbs?|count|ct|strips?|pieces?))/i);
+                        const volMatch = d.title.match(/(\d+\.?\d*\s?(oz|fl\s?oz|ml|gallon|gal|lbs?|count|ct|strips?|pieces?|units?))/i);
                         d.volume = volMatch ? volMatch[0] : '1-Unit Standard';
                     }
 
