@@ -839,7 +839,8 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
     runLocalIntelligenceAnalysis(ideaName, competitorData) {
         // 1. Calculate Target Price (Median + 15%)
         const prices = competitorData.map(c => {
-            const val = parseFloat((c.data?.price || c.price || '0').replace(/[^0-9.]/g, ''));
+            const raw = c.data?.price || c.price || '0';
+            const val = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
             return isNaN(val) ? null : val;
         }).filter(p => p > 0).sort((a,b) => a - b);
         
