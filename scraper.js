@@ -63,7 +63,7 @@ class ScraperEngine {
 
     async getPriceFromScraperAPI(asin) {
         let attempts = 0;
-        const maxAttempts = 3;
+        const maxAttempts = 2; // Rapid failure
         const apiKey = process.env.SCRAPERAPI_KEY;
         if (!apiKey) {
             logger.error('[SCRAPER] SCRAPERAPI_KEY is missing from environment variables!');
@@ -74,7 +74,7 @@ class ScraperEngine {
             attempts++;
             try {
                 const url = `https://api.scraperapi.com/structured/amazon/product?api_key=${apiKey}&asin=${asin}&country=us`;
-                const res = await axios.get(url, { timeout: 45000, headers: { 'Accept': 'application/json' }});
+                const res = await axios.get(url, { timeout: 30000, headers: { 'Accept': 'application/json' }});
                 if (res.status === 200) {
                     const data = res.data;
                     logger.info(`[${asin}] ScraperAPI-Structured JSON retrieved successfully.`);
@@ -95,7 +95,7 @@ class ScraperEngine {
 
     async getHTMLFromScraperAPI(asin, domain, render = false) {
         let attempts = 0;
-        const maxAttempts = 5; // Increased for peak reliability
+        const maxAttempts = 2; // Reduced for peak stability in serverless
         const apiKey = process.env.SCRAPERAPI_KEY;
         const targetUrl = `https://${domain}/dp/${asin}?th=1&psc=1&language=en_US&currency=USD&gl=US`;
 
@@ -110,7 +110,7 @@ class ScraperEngine {
                     url = targetUrl;
                 }
                 const res = await axios.get(url, { 
-                    timeout: render ? 120000 : 60000, // Slightly longer timeouts
+                    timeout: render ? 60000 : 30000, // Strictly capped
                     headers: apiKey ? {} : {
                         'User-Agent': config.scraper.userAgentPool[0] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                     }
@@ -136,16 +136,22 @@ class ScraperEngine {
 
     async scrapeASIN(product, progressCallback) {
         const { asin, domain } = typeof product === 'string' ? { asin: product, domain: config.scraper.defaultDomain } : product;
-        logger.info(`[SCRAPER] Scraping ${asin} on ${domain}`);
+        logger.info(`[SCRAPER] Starting scrape for ${asin}`);
+        
+        // --- LAYER 1: Standard HTML Fetch ---
+        logger.info(`[${asin}] Fetching product page HTML...`);
+        let html = await this.getHTMLFromScraperAPI(asin, domain);
+        let structuredData = null;
 
-        const apiPricePromise = this.getPriceFromScraperAPI(asin);
-        const htmlPromise = this.getHTMLFromScraperAPI(asin, domain);
+        // --- LAYER 2: Contextual Fallback (Only fetch JSON if HTML is empty) ---
+        if (!html) {
+            logger.warn(`[${asin}] HTML fetch empty. Attemping Structured JSON fallback...`);
+            structuredData = await this.getPriceFromScraperAPI(asin);
+        }
 
-        const [structuredData, html] = await Promise.all([apiPricePromise, htmlPromise]);
-
-        if (!structuredData && !html) {
-            logger.warn(`[SCRAPER] Both structured and HTML fetch failed for ${asin}. Check SCRAPERAPI_KEY and timeouts.`);
-            return { asin, status: 'FAILED', reason: 'Failed to retrieve page HTML and JSON' };
+        if (!html && !structuredData) {
+            logger.error(`[${asin}] Critical failure: Both HTML and JSON sources returned no data.`);
+            return { asin, status: 'FAILED', reason: 'Service Unavailable' };
         }
 
         let data = {
