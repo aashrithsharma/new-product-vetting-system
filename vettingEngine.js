@@ -871,8 +871,8 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
                 const p = parseFloat(String(c.data?.price || c.price || '0').replace(/[^0-9.]/g, '')) || 0;
                 let tier = 'Mid-Range';
                 if (p > 0 && targetPrice > 0) {
-                    if (p < targetPrice * 0.75) tier = 'Budget';
-                    else if (p > targetPrice * 1.30) tier = 'Premium';
+                    if (p < targetPrice * 0.85) tier = 'Budget';
+                    else if (p > targetPrice * 1.15) tier = 'Premium';
                 }
                 return {
                     asin: c.asin || c.data?.asin,

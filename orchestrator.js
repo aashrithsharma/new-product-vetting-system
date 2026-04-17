@@ -412,7 +412,13 @@ class Orchestrator {
 
                     if (!hasValidVol) {
                         const volMatch = d.title.match(/(\d+\.?\d*\s?(oz|fl\s?oz|ml|gallon|gal|lbs?|count|ct|strips?|pieces?|units?))/i);
-                        d.volume = volMatch ? volMatch[0] : '1-Unit Standard';
+                        if (volMatch) {
+                            d.volume = volMatch[0];
+                        } else {
+                            // Use Weight as a proxy for volume if missing (e.g. "1x 5 lb")
+                            const cleanWeight = String(d.weight || '1-Unit').trim();
+                            d.volume = `1x ${cleanWeight}`;
+                        }
                     }
 
                     if (!hasValidWeight) {
