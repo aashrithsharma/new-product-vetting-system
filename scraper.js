@@ -65,7 +65,10 @@ class ScraperEngine {
         let attempts = 0;
         const maxAttempts = 3;
         const apiKey = process.env.SCRAPERAPI_KEY;
-        if (!apiKey) return null;
+        if (!apiKey) {
+            logger.error('[SCRAPER] SCRAPERAPI_KEY is missing from environment variables!');
+            return null;
+        }
 
         while (attempts < maxAttempts) {
             attempts++;
@@ -140,7 +143,8 @@ class ScraperEngine {
 
         const [structuredData, html] = await Promise.all([apiPricePromise, htmlPromise]);
 
-        if (!html && !structuredData) {
+        if (!structuredData && !html) {
+            logger.warn(`[SCRAPER] Both structured and HTML fetch failed for ${asin}. Check SCRAPERAPI_KEY and timeouts.`);
             return { asin, status: 'FAILED', reason: 'Failed to retrieve page HTML and JSON' };
         }
 
