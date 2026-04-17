@@ -180,11 +180,8 @@ class SheetsService {
             
             const grid = labels.map(l => [l]);
             
-            const validDims = results.map(r => r.data?.dimensions).filter(d => d && d !== 'N/A' && d !== '-' && d !== '—');
-            const dynamicDim = validDims.length > 0 ? validDims[0] : '8 x 5 x 2 inches';
-            
-            const validWeights = results.map(r => r.data?.weight).filter(w => w && w !== 'N/A' && w !== '-' && w !== '—');
-            const dynamicWeight = validWeights.length > 0 ? validWeights[0] : '1.5 lbs';
+            // 100% ACCURACY MODE: We no longer pre-calculate global fallbacks (neighbor data).
+            // Each individual column must represent its own scraped or AI-healed data.
 
             for (let i = 0; i < Math.min(results.length, 6); i++) {
                 const r = results[i];
@@ -275,7 +272,7 @@ class SheetsService {
             if (ai) {
                 values.push(['SECTION 3 — Market Intelligence Brief', '', '', '', '', '', '', '']); 
                 values.push(['STRATEGIC MARKET ANALYSIS', '', '', '', 'OPERATIONAL BENCHMARKS', '', '', '']);
-                values.push([fNA(ai.intelligenceBrief, 'Comprehensive market analysis in progress...'), '', '', '', `Target SKU Size: ${fNA(ai.targetSize, '1-Unit Standard')}\nTarget Price Focus: $${fNA(ai.targetPrice, '0.00')}\nEst. Seasonality: ${fNA(ai.seasonality, '365')} days\nProduct Format: ${fNA(ai.formatResearch, 'Market Standard')}`, '', '', '']);
+                values.push([fNA(ai.intelligenceBrief, 'Comprehensive market analysis in progress...'), '', '', '', `Target SKU Size: ${fNA(ai.targetSize, 'Standard Size')}\nTarget Price Focus: $${fNA(ai.targetPrice, '0.00')}\nEst. Seasonality: ${fNA(ai.seasonality, '365')} days\nProduct Format: ${fNA(ai.formatResearch, 'Market Standard')}`, '', '', '']);
                 values.push([]);
             }
 

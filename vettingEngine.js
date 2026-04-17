@@ -297,14 +297,15 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
     /**
      * Helper to extract standardized size from title or scraped size field
      */
-    _extractSize(title, scrapedSize) {
-        if (!title) return scrapedSize || 'N/A';
+    _extractSize(title, scrapedSize, scrapedVolume) {
+        if (!title) return scrapedVolume || scrapedSize || 'N/A';
         
-        // 1. If scraped size is already good, use it (but normalize)
-        let size = scrapedSize && scrapedSize !== 'N/A' ? scrapedSize : '';
+        // 1. Prioritize scraped volume if it exists and is valid
+        let size = scrapedVolume && scrapedVolume !== 'N/A' ? scrapedVolume : '';
+        if (!size) size = scrapedSize && scrapedSize !== 'N/A' ? scrapedSize : '';
         
         // 2. Regex for volume/weight sizes (Gallons, Oz, Lbs, etc.)
-        const volumeRegex = /(\d+\.?\d*\s*(?:gallon|gal|liters?|l|ml|fl\s?oz|oz|ounce|pound|lb|lbs|kg|grams|g))\b/i;
+        const volumeRegex = /(\d+\.?\d*\s*(?:gallon|gal|liters?|l|ml|fl\s?oz|oz|ounce|pound|lb|lbs|kg|grams?|g))\b/i;
         const packRegex = /(\d+\s*(?:pack|count|ct|pcs|pieces))\b/i;
         const kitRegex = /(\d+\s*(?:way|in\s*1|in\s*one|test|feature|func|component))\b/i;
         
@@ -324,6 +325,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
             .replace(/gal\b/i, 'Gallon')
             .replace(/\boz\b|\bounces?\b/i, 'oz')
             .replace(/\bpounds?\b|\blbs?\b/i, 'lb')
+            .replace(/\bgrams?\b|\bg\b/i, 'g')
             .trim();
             
         // Capitalize first letter of each word for clean display
@@ -376,14 +378,8 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
 
             if (badgeDaily === null) return null; // Still nothing? Skip.
 
-            // Step 2: BSR multiplier (small adjustment only)
-            let bsrMultiplier = 1.0;
-            if (bsr > 0) {
-                if      (bsr < 1000)  bsrMultiplier = 1.2;
-                else if (bsr < 5000)  bsrMultiplier = 1.1;
-                else if (bsr > 50000) bsrMultiplier = 0.85;
-            }
-            const bsrAdjusted = Math.round(badgeDaily * bsrMultiplier);
+            // Step 2: Velocity normalization (No random multipliers)
+            const bsrAdjusted = badgeDaily || 1;
 
             // Step 3: Price elasticity — cap the minimum at 40% to avoid near-zero
             let elasticity = 1.0;
@@ -401,11 +397,11 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
                 badgeDaily,
                 bsrAdjusted,
                 competitorAdjustedDaily,
-                // ML: ~75% of market share capture (Strong Mid-Premium entry)
-                // BC: ~125% of competitor's volume (Market Leadership)
-                launchMostLikely: Math.max(1, Math.round(competitorAdjustedDaily * 0.75)), 
-                launchBestCase:   Math.max(1, Math.round(competitorAdjustedDaily * 1.25)),
-                size: this._extractSize(d.title, d.size)
+                // SIX10 DEBRIEF ALIGNMENT (ML=10% of Top 3 Avg, BC=30% of Leader)
+                // We pre-calculate local variants for the analysis section
+                launchMostLikely: Math.max(1, Math.round(competitorAdjustedDaily * 0.10)), 
+                launchBestCase:   Math.max(1, Math.round(competitorAdjustedDaily * 0.30)),
+                size: this._extractSize(d.title, d.size, d.volume)
             };
         }).filter(Boolean);
 
@@ -440,7 +436,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
             sizeGroups[c.size].avgFbaFee = sizeGroups[c.size].totalFbaFee / sizeGroups[c.size].competitorCount;
         });
 
-        // Identify the "Winner" size (Highest Revenue modified by "FBA Efficiency" — thinking about dimensions)
+        // Identify the "Winner" size (Highest Revenue modified by "FBA Efficiency")
         let recommendedSize = 'Standard Size';
         let maxViabilityScore = 0;
         Object.keys(sizeGroups).forEach(size => {
@@ -459,15 +455,12 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         // Sort by competitorAdjustedDaily descending (strongest to weakest)
         parsed.sort((a, b) => b.competitorAdjustedDaily - a.competitorAdjustedDaily);
 
-        // Most Likely = Median capture of top performers (more robust than average)
-        const top5 = parsed.slice(0, Math.min(5, parsed.length));
-        top5.sort((a, b) => a.launchMostLikely - b.launchMostLikely);
-        const mostLikely = top5.length > 0 
-            ? top5[Math.floor(top5.length / 2)].launchMostLikely 
-            : 15;
-
-        // Best Case = Professional launch capture (30% of market leader)
-        const bestCase = parsed[0].launchBestCase;
+        // --- SIX10 FORMULA: ML = 10% of Average(Top 3) | BC = 30% of Leader ---
+        const top3 = parsed.slice(0, Math.min(3, parsed.length));
+        const top3Avg = top3.reduce((sum, c) => sum + c.competitorAdjustedDaily, 0) / top3.length;
+        
+        const mostLikely = Math.max(3, Math.round(top3Avg * 0.10));
+        const bestCase   = Math.max(mostLikely + 5, Math.round(parsed[0].competitorAdjustedDaily * 0.30));
         
         logger.info(`[VETTING] Dynamic Baseline — Top Comp: ${parsed[0].competitorAdjustedDaily}/day, ML=${mostLikely}/day, BC=${bestCase}/day | Recommended Size: ${recommendedSize}`);
 
@@ -517,7 +510,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
            - ANALYZE DATA: Scan \`category\` and \`keyFeatures\`. Categorize as 365 if there is ANY professional/replenishable utility.
            - BSR VALIDATION: If competitors show high sales velocity in the current "off-season," it must be 365.
            - If unsure, DEFAULT to 365.
-        4.5. TARGET SKU SIZE: Based on the competitor data, identify which specific size (e.g., "32 oz", "1 Gallon", "Pack of 2") this Target Price and financial model is specifically for.
+        4.5. TARGET SKU SIZE: Based on the competitor data, identify which specific size (e.g., "32 oz", "1 Gallon", "Pack of 2") this Target Price and financial model is specifically for. Use the most specific variant available.
         5. TARGET PRICE POSITIONING: Six10 is a MID-PREMIUM brand. 
            - Position the target price 10-20% ABOVE the category median. 
            - Focus on matching the PREMIUM tier's features/quality while maintaining a slight price advantage over the highest-priced leader.
@@ -551,7 +544,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         OUTPUT: Respond with ONLY valid raw JSON — no markdown, no explanation, no code blocks.
         {
           "classifications": [{"asin": "B0...", "brand": "Brand", "tier": "Mid-Range", "reasoning": "..."}],
-          "targetSize": "${velocity.recommendedSize}",
+          "targetSize": "...", // Analysis: recommend specific size based on market data (e.g., 32 oz, 1 Gallon, Pack of 50)
           "targetPrice": 24.99,
           "pricingReasoning": "...",
           "mostLikelyUnitsPerDay": ${velocity.mostLikely},
@@ -730,18 +723,25 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         const scenarios = [];
         const trailingRev = 25000000; // $25M denominator per debrief
 
-        // Best case: use Claude's estimate if provided, based purely on the competitive data
-        const rawBestCase = bestCaseUnits || Math.max((estimatedUnits || 25) * 2, 41);
-        const clampedBestCase = Math.max(rawBestCase, 41); 
+        // 1. Sanity Cap for Best Case Velocity
+        // Most niche products should not projected at 2,000+ units/day without extreme evidence.
+        const suggestedML = estimatedUnits || 25;
+        const rawBestCase = bestCaseUnits || Math.max(suggestedML * 2, 41);
         
-        // Find the closest odd number to bestCase for the table ceiling
+        // Cap Best Case at 500 units/day or 5x Most Likely (whichever is higher)
+        const sanityCeiling = Math.max(500, suggestedML * 5);
+        const clampedBestCase = Math.min(rawBestCase, sanityCeiling);
+        
         let tableCeiling = Math.round(clampedBestCase);
         if (tableCeiling % 2 === 0) tableCeiling += 1;
 
-        // Generate scenario table up to the realistic best-case limit
-        for (let units = 1; units <= tableCeiling; units += 2) {
+        // 2. Fixed Step Size: as per debrief, step should be 2 for a clear sequence (1, 3, 5...)
+        const step = 2;
+
+        // Generate scenario table with a dynamic step size
+        for (let units = 1; units <= tableCeiling; units += step) {
             const dailyRev = units * price;
-            const annualVolume = units * days;       // Uses correct days (245 or 365)
+            const annualVolume = units * days; 
             const annualRev = dailyRev * days;       // Uses correct days (245 or 365)
             const pctOfRev = (annualRev / trailingRev) * 100;
 
@@ -838,16 +838,17 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
      */
     runLocalIntelligenceAnalysis(ideaName, competitorData) {
         // 1. Calculate Target Price (Median + 15%)
+        // Filter out extreme low outliers (samples/add-ons) to prevent market distortion
         const prices = competitorData.map(c => {
             const raw = c.data?.price || c.price || '0';
             const val = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
             return isNaN(val) ? null : val;
-        }).filter(p => p > 0).sort((a,b) => a - b);
+        }).filter(p => p > 5.00).sort((a,b) => a - b); // Skip <$5 samples
         
-        let targetPrice = 29.99;
+        let targetPrice = 24.99; // Default mid-premium anchor
         if (prices.length > 0) {
             const median = prices[Math.floor(prices.length / 2)];
-            targetPrice = parseFloat((median * 1.15).toFixed(2));
+            targetPrice = Math.max(19.99, parseFloat((median * 1.15).toFixed(2)));
         }
 
         // 2. Local velocity baseline
@@ -867,33 +868,54 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         else baseballCategory = 'Less Than a Single';
 
         const analysis = {
-            classifications: competitorData.slice(0, 10).map(c => {
-                const p = parseFloat(String(c.data?.price || c.price || '0').replace(/[^0-9.]/g, '')) || 0;
+            classifications: (() => {
+                // IMPORTANT: Calculate tiers based ONLY on the items being shown (Visible-Only Logic)
+                const visibleCount = Math.min(6, competitorData.length);
+                const mapped = competitorData.slice(0, visibleCount).map(c => {
+                    const price = parseFloat(String(c.data?.price || c.price || '0').replace(/[^0-9.]/g, '')) || 0;
+                    return { ...c, cleanPrice: price };
+                }).filter(m => m.cleanPrice > 0);
+
+                const sorted = [...mapped].sort((a, b) => a.cleanPrice - b.cleanPrice);
+                const count = sorted.length;
                 
-                // Dynamic Range Calculation for Maximum Variety
-                const validPrices = competitorData.map(cc => parseFloat(String(cc.data?.price || cc.price || '0').replace(/[^0-9.]/g, ''))).filter(pp => pp > 0);
-                const minPrice = validPrices.length ? Math.min(...validPrices) : 10;
-                const maxPrice = validPrices.length ? Math.max(...validPrices) : 50;
-                const range = maxPrice - minPrice;
+                return mapped.map(c => {
+                    const rank = sorted.findIndex(s => s.cleanPrice === c.cleanPrice);
+                    const cleanP = c.cleanPrice;
+                    
+                    let tier = 'Mid-Range';
+                    // INTELLIGENT DYNAMIC CLUSTERING:
+                    // Only label as Budget/Premium if the price reflects a clear market shift
+                    if (cleanP <= targetPrice * 0.75) tier = 'Budget';
+                    else if (cleanP >= targetPrice * 1.25) tier = 'Premium';
+                    else tier = 'Mid-Range';
+
+                    // SAFETY SPREAD: Always highlight the visible market leaders
+                    if (rank === count - 1 && cleanP > targetPrice) tier = 'Premium';
+                    else if (rank === 0 && cleanP < targetPrice) tier = 'Budget';
+
+                    return {
+                        asin: c.asin || c.data?.asin,
+                        brand: c.data?.brand || c.brand || 'Competitor',
+                        tier,
+                        price: c.data?.price || c.price,
+                        reasoning: `Market Price Rank: ${rank + 1} of ${count}.`
+                    };
+                });
+            })(),
+            targetSize: (() => {
+                // Prioritize the recommended size calculated from market distribution
+                if (velocity.recommendedSize && velocity.recommendedSize !== 'Standard Size') return velocity.recommendedSize;
                 
-                let tier = 'Mid-Range';
-                if (range > 2) {
-                    if (p <= minPrice + (range * 0.25)) tier = 'Budget';
-                    else if (p >= maxPrice - (range * 0.25)) tier = 'Premium';
-                } else if (p > 0 && targetPrice > 0) {
-                    // Fallback to static if range is too narrow
-                    if (p < targetPrice * 0.90) tier = 'Budget';
-                    else if (p > targetPrice * 1.10) tier = 'Premium';
-                }
+                // Fallback: Return the volume of the top-selling competitor (Lowest BSR = Top Seller)
+                const topSeller = [...competitorData].sort((a, b) => {
+                    const bsrA = parseInt(String(a.data?.bsr || '999999').replace(/[^0-9]/g, ''), 10);
+                    const bsrB = parseInt(String(b.data?.bsr || '999999').replace(/[^0-9]/g, ''), 10);
+                    return bsrA - bsrB;
+                })[0]?.data;
                 
-                return {
-                    asin: c.asin || c.data?.asin,
-                    brand: c.data?.brand || c.brand || 'Competitor',
-                    tier,
-                    reasoning: `Auto-positioned based on price point ($${p}) relative to market spread ($${minPrice}-$${maxPrice}).`
-                };
-            }),
-            targetSize: velocity.recommendedSize,
+                return topSeller?.volume || topSeller?.size || velocity.recommendedSize || 'Standard SKU';
+            })(),
             targetPrice,
             estimatedUnitsPerDay: velocity.mostLikely,
             mostLikelyUnitsPerDay: velocity.mostLikely,
