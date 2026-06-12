@@ -103,49 +103,28 @@ class SheetsService {
             let shortName = String(ideaName).split(' > ').pop(); // Just take the last part of category
             if (shortName.length > 50) shortName = shortName.substring(0, 50) + '...';
             
-            let targetSheetTitle = `[${timestamp}] ${shortName}`;
-            // Clean up for Google Sheets
-            targetSheetTitle = targetSheetTitle.substring(0, 100).replace(/[\[\]\?\*\/\\\:]/g, '');
-
-            let targetSheetId;
-            const existingTarget = sheetsList.find(s => s.properties.title === targetSheetTitle);
+            let baseTitle = `[${dateStr}] ${shortName}`.replace(/[\[\]\?\*\/\\\:]/g, '').substring(0, 90);
+            let targetSheetTitle = baseTitle;
+            let counter = 1;
             
-            if (!existingTarget) {
-                targetSheetId = Math.floor(Math.random() * 10000000);
-                await this.sheets.spreadsheets.batchUpdate({
-                    spreadsheetId,
-                    resource: {
-                        requests: [
-                            { addSheet: { properties: { sheetId: targetSheetId, title: targetSheetTitle, index: 0 } } }
-                        ]
-                    }
-                });
-                logger.info(`[SHEETS] Created new target tab: ${targetSheetTitle}`);
-            } else {
-                targetSheetId = existingTarget.properties.sheetId;
-                logger.info(`[SHEETS] Using existing target tab: ${targetSheetTitle}`);
-                // Clear and move to front in ONE call
-                await this.sheets.spreadsheets.batchUpdate({
-                    spreadsheetId,
-                    resource: {
-                        requests: [
-                            { updateSheetProperties: { fields: "index", properties: { sheetId: targetSheetId, index: 0 } } },
-                            { updateCells: { range: { sheetId: targetSheetId }, fields: "*" } } // Faster than clear for formatting
-                        ]
-                    }
-                });
-                await this.sheets.spreadsheets.values.clear({ spreadsheetId, range: `'${targetSheetTitle}'!A1:ZZ1000` });
+            // Increment title if it already exists to prevent overwriting
+            while (sheetsList.some(s => s.properties.title === targetSheetTitle)) {
+                counter++;
+                targetSheetTitle = `${baseTitle} - ${counter}`;
             }
 
-            // Note: Content and unmerge already handled above if existing, or fresh if new.
-            try {
-                if (!existingTarget) {
-                    await this.sheets.spreadsheets.batchUpdate({
-                        spreadsheetId,
-                        resource: { requests: [{ unmergeCells: { range: { sheetId: targetSheetId } } }] }
-                    });
+            let targetSheetId = Math.floor(Math.random() * 10000000);
+            await this.sheets.spreadsheets.batchUpdate({
+                spreadsheetId,
+                resource: {
+                    requests: [
+                        { addSheet: { properties: { sheetId: targetSheetId, title: targetSheetTitle, index: 0 } } },
+                        { unmergeCells: { range: { sheetId: targetSheetId } } } // Ensure fresh sheet is clean
+                    ]
                 }
-            } catch(e) {}
+            });
+            logger.info(`[SHEETS] Created unique tab: ${targetSheetTitle}`);
+
 
 
             // === ASSEMBLE VALUES ===
@@ -435,9 +414,28 @@ class SheetsService {
             values.push([]); // Space
             values.push([]); // Space
 
-            // SECTION 5 — TABLE 3: VOLUME SCENARIOS
+            // SECTION 5 — TABLE 3: VOLUME SCENARIOS & REVENUE BASELINE
             const table3StartRow = values.length + 1;
-            values.push(['TABLE 3 — VOLUME SCENARIOS (Expected Units Per Day)', '', '', '', '', '', '', '']);
+            
+            // Add Revenue Baseline Box (Column K)
+            const baselineRow = table3StartRow + 1;
+            const baselineCell = `$K$${baselineRow}`; // DYNAMIC REFERENCE
+            
+            // Row 1: Section Header + Revenue Baseline Label
+            const row1 = new Array(11).fill('');
+            row1[0] = 'TABLE 3 — VOLUME SCENARIOS (Expected Units Per Day)';
+            row1[10] = 'REVENUE BASELINE (Market Denominator)';
+            values.push(row1);
+
+            // Row 2: Baseline Input Cell
+            const row2 = new Array(11).fill('');
+            row2[10] = 27000000; // Default $27M as requested
+            values.push(row2);
+
+            // Row 3: Note Row
+            const row3 = new Array(11).fill('');
+            row3[10] = 'Manually editable — type new value here';
+            values.push(row3);
 
             const t3Headers = [
                 'Expected Units We Can Sell Per Day',
@@ -458,7 +456,6 @@ class SheetsService {
             const scenarios = financials?.scenarios || [];
             const regularPrice = financials?.annualMetrics?.regularPrice || (ai?.targetPrice || 22.99);
             const days365 = 365;
-            const denominatorRevenue = 25000000;
 
             scenarios.forEach((s, idx) => {
                 const rowNum = values.length + 1; // 1-indexed for tracking
@@ -478,7 +475,7 @@ class SheetsService {
                     s.daysPerYear || days365,
                     `=$A${rowNum}*$D${rowNum}`,
                     `=$C${rowNum}*$D${rowNum}`,
-                    `=$F${rowNum}/${denominatorRevenue}`,
+                    `=$F${rowNum}/${baselineCell}`, // Use dynamic baseline cell
                     scenarioLabel
                 ]);
             });
@@ -510,7 +507,7 @@ class SheetsService {
                         365, 
                         `=$A${rowNum}*$D${rowNum}`, 
                         `=$C${rowNum}*$D${rowNum}`, 
-                        `=$F${rowNum}/${denominatorRevenue}`, 
+                        `=$F${rowNum}/${baselineCell}`, // Use dynamic baseline cell
                         label
                     ]);
                 }
@@ -661,22 +658,32 @@ class SheetsService {
                 requests.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: w }, fields: 'pixelSize' } });
             });
 
-            // === TABLE 3 FORMATTING ===
-            const t3Start = table3StartRow - 1; // convert to 0-indexed
+            // === TABLE 3 FORMATTING (Scenario Table + Revenue Baseline) ===
+            const t3Start = table3StartRow - 1; // 0-indexed first header row
             const lightGrey = { red: 0.85, green: 0.85, blue: 0.85 };
             const yellowHighlight = { red: 1, green: 1, blue: 0 };
             const greenHighlight = { red: 0, green: 0.85, blue: 0 };
             const darkGreenText = { red: 0, green: 0.2, blue: 0 };
+            const baselineBlueText = { red: 0.1, green: 0.2, blue: 0.8 }; // Blue text for baseline value
 
-            // Table 3 Section Header (navy, full width 8 cols)
-            mergeCells(t3Start, t3Start + 1, 0, 7);
+            // 1. MAIN TABLE 3 HEADER (Cols A-H)
+            mergeCells(t3Start, t3Start + 1, 0, 8);
             requests.push({ repeatCell: { range: { sheetId, startRowIndex: t3Start, endRowIndex: t3Start + 1, startColumnIndex: 0, endColumnIndex: 8 }, cell: { userEnteredFormat: { backgroundColor: headerNavy, textFormat: { bold: true, foregroundColor: headerTextWhite, fontSize: 13 }, horizontalAlignment: 'CENTER' } }, fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)' } });
 
-            // Table 3 Column Headers (row after section header)
-            requests.push({ repeatCell: { range: { sheetId, startRowIndex: t3Start + 1, endRowIndex: t3Start + 2, startColumnIndex: 0, endColumnIndex: 8 }, cell: { userEnteredFormat: { backgroundColor: lightGrey, textFormat: { bold: true }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE', wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)' } });
+            // 2. REVENUE BASELINE BOX (Col K / Index 10)
+            // Header Row (K)
+            requests.push({ repeatCell: { range: { sheetId, startRowIndex: t3Start, endRowIndex: t3Start + 1, startColumnIndex: 10, endColumnIndex: 11 }, cell: { userEnteredFormat: { backgroundColor: headerNavy, textFormat: { bold: true, foregroundColor: headerTextWhite }, horizontalAlignment: 'CENTER' } }, fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)' } });
+            // Input Row (K) - Yellow + Blue Text
+            requests.push({ repeatCell: { range: { sheetId, startRowIndex: t3Start + 1, endRowIndex: t3Start + 2, startColumnIndex: 10, endColumnIndex: 11 }, cell: { userEnteredFormat: { backgroundColor: yellowHighlight, textFormat: { bold: true, foregroundColor: baselineBlueText, fontSize: 12 }, horizontalAlignment: 'CENTER', numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0' } } }, fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,numberFormat)' } });
+            // Note Row (K) - Grey
+            requests.push({ repeatCell: { range: { sheetId, startRowIndex: t3Start + 2, endRowIndex: t3Start + 3, startColumnIndex: 10, endColumnIndex: 11 }, cell: { userEnteredFormat: { backgroundColor: lightGrey, textFormat: { italic: true, fontSize: 8 }, horizontalAlignment: 'CENTER' } }, fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)' } });
+
+            // 3. TABLE 3 COLUMN HEADERS (Shifted 3 rows down)
+            const realT3HeaderStart = t3Start + 3;
+            requests.push({ repeatCell: { range: { sheetId, startRowIndex: realT3HeaderStart, endRowIndex: realT3HeaderStart + 1, startColumnIndex: 0, endColumnIndex: 8 }, cell: { userEnteredFormat: { backgroundColor: lightGrey, textFormat: { bold: true }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE', wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)' } });
 
             // Table 3 data rows — Currency format on cols B,C,F (indices 1,2,5)
-            const t3DataStart = t3Start + 2;
+            const t3DataStart = realT3HeaderStart + 1;
             const t3DataEnd = values.length + 1;
             [1, 2, 5].forEach(c => {
                 requests.push({ repeatCell: { range: { sheetId, startRowIndex: t3DataStart, endRowIndex: t3DataEnd, startColumnIndex: c, endColumnIndex: c + 1 }, cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"$"#,##0.00' } } }, fields: 'userEnteredFormat(numberFormat)' } });

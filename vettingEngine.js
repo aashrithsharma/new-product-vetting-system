@@ -1,43 +1,54 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const logger = require('./logger');
 const utils = require('./utils');
 
 
 class VettingEngine {
     constructor() {
-        this.anthropic = null;
-        if (process.env.ANTHROPIC_API_KEY) {
-            this.anthropic = new Anthropic({ 
-                apiKey: process.env.ANTHROPIC_API_KEY.trim(),
-                timeout: 120000 // Increased to 120 seconds for complex market analysis
-            });
+        this.gemini = null;
+        if (process.env.GEMINI_API_KEY) {
+            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY.trim());
+            this.gemini = genAI;
         }
     }
 
     /**
-     * Helper to call Claude with the new Sonnet 4 model
+     * Helper to call Gemini with the gemini-1.5-flash model
      */
-    async callClaude(params) {
-        if (!this.anthropic) {
-            logger.error('[VETTING] ANTHROPIC_API_KEY missing from .env');
-            throw new Error('Anthropic API key required.');
+    async callGemini(params) {
+        if (!this.gemini) {
+            logger.error('[VETTING] GEMINI_API_KEY missing from .env');
+            throw new Error('Gemini API key required.');
         }
 
-        const model = 'claude-sonnet-4-20250514';
+        const modelName = 'gemini-2.5-flash';
         let attempts = 0;
         const maxAttempts = 3;
 
         while (attempts < maxAttempts) {
             attempts++;
             try {
-                return await this.anthropic.messages.create({
-                    ...params,
-                    model
-                }, { timeout: 35000 }); // Slightly faster 35s timeout
+                const model = this.gemini.getGenerativeModel({
+                    model: modelName,
+                    generationConfig: {
+                        maxOutputTokens: params.max_tokens || 2500,
+                        temperature: params.temperature ?? 0
+                    }
+                });
+
+                // Build the prompt: combine system + user messages into a single string
+                const systemPart = params.system ? `${params.system}\n\n` : '';
+                const userContent = params.messages.map(m => m.content).join('\n');
+                const fullPrompt = systemPart + userContent;
+
+                const result = await model.generateContent(fullPrompt);
+                // Wrap result to expose the same .content[0].text interface used downstream
+                const text = result.response.text();
+                return { content: [{ text }] };
             } catch (e) {
-                const isRetryable = e.status === 529 || e.code === 'ECONNRESET' || (e.message && e.message.includes('Overloaded'));
+                const isRetryable = e.status === 529 || e.code === 'ECONNRESET' || (e.message && e.message.includes('overloaded'));
                 if (isRetryable && attempts < maxAttempts) {
-                    const delay = 8000; // Reduced to 8s for speed
+                    const delay = 8000;
                     if (attempts === 1) {
                         logger.info(`[VETTING] Prioritizing request under load...`);
                     }
@@ -50,7 +61,7 @@ class VettingEngine {
     }
 
     async healProductData(productData, rawText) {
-        if (!this.anthropic) return productData;
+        if (!this.gemini) return productData;
 
         // Detect "Suspicious" weight or dimensions (now more aggressive)
         const isSuspiciousWeight = !productData.weight || 
@@ -117,7 +128,7 @@ Return ONLY a JSON object: {"dimensions": "X.X x Y.Y x Z.Z inches", "weight": "X
 (Note: Always include units like "oz", "lbs", "Count", or "inches")`;
 
         try {
-            const res = await this.callClaude({
+            const res = await this.callGemini({
                 messages: [{ role: 'user', content: prompt + `\n\nTEXT SNIPPET:\n${snip}` }],
                 max_tokens: 350
             });
@@ -128,7 +139,7 @@ Return ONLY a JSON object: {"dimensions": "X.X x Y.Y x Z.Z inches", "weight": "X
             try {
                 healed = JSON.parse(match ? match[0] : content);
             } catch (parseErr) {
-                logger.warn(`[VETTING] Failed to parse Claude healing JSON. Raw text: ${content.substring(0, 100)}...`);
+                logger.warn(`[VETTING] Failed to parse Gemini healing JSON. Raw text: ${content.substring(0, 100)}...`);
                 // Fallback to manual regex if JSON parsing completely fails
                 healed = {
                     dimensions: (content.match(/"dimensions"\s*:\s*"([^"]+)"/) || [])[1],
@@ -138,7 +149,7 @@ Return ONLY a JSON object: {"dimensions": "X.X x Y.Y x Z.Z inches", "weight": "X
                 };
             }
 
-            // CLEANER: Ensure Claude didn't sneak in conversational "Unable to determine" text
+            // CLEANER: Ensure Gemini didn't sneak in conversational "Unable to determine" text
             const isInvalid = (val) => !val || val.toLowerCase().includes('unable') || val.toLowerCase().includes('determine') || val === 'N/A' || val === '-';
 
             if (healed) {
@@ -206,11 +217,25 @@ Return ONLY a JSON object: {"dimensions": "X.X x Y.Y x Z.Z inches", "weight": "X
 
     /**
      * Layer 0: Search Query Optimization
+     * Returns an array of up to 3 targeted search queries for maximum coverage.
      */
     async generateSearchQuery(primaryData) {
-        if (!this.anthropic) return primaryData.title?.split(' ').slice(0, 5).join(' ') || 'amazon product';
+        // Build a deterministic fallback from the product data
+        const buildFallback = () => {
+            const category = primaryData.category?.split('>').pop()?.trim() || '';
+            // Extract meaningful words from title — skip brand, skip stop words
+            const stopWords = new Set(['with', 'for', 'and', 'the', 'a', 'an', 'in', 'of', 'to', 'by', '&', 'or']);
+            const brandWords = new Set((primaryData.brand || '').toLowerCase().split(' '));
+            const titleKeywords = (primaryData.title || '').split(' ')
+                .filter(w => w.length > 2 && !stopWords.has(w.toLowerCase()) && !brandWords.has(w.toLowerCase()))
+                .slice(0, 5)
+                .join(' ');
+            return [titleKeywords, `${category} ${titleKeywords.split(' ').slice(0, 3).join(' ')}`.trim()].filter(Boolean);
+        };
 
-        const prompt = `You are an Amazon market research expert finding DIRECT competitors.
+        if (!this.gemini) return buildFallback();
+
+        const prompt = `You are an Amazon market research expert. Generate 3 DIFFERENT search queries to find direct competitors for this product on Amazon.
 
 Product:
 - Title: ${primaryData.title}
@@ -218,67 +243,104 @@ Product:
 - Price: ${primaryData.price || 'N/A'}
 - Category: ${primaryData.category || 'N/A'}
 
-Generate ONE Amazon search query (3-6 words) that finds DIRECT COMPETITORS.
 Rules:
-1. Focus on product TYPE and USE CASE, not the brand name
-2. Include key characteristics (e.g. "pool clarifier liquid", "hair growth serum women")
-3. Do NOT include the brand name "${primaryData.brand || ''}" in your query
-4. Match what a customer searches when comparing options
+1. Each query must target the PRODUCT TYPE and USE CASE — not the brand
+2. Do NOT include the brand name "${primaryData.brand || ''}" in ANY query
+3. Query 1: Specific product type (e.g. "electric pressure cooker 6 quart", "pool clarifier liquid")
+4. Query 2: Broader category + key feature (e.g. "multi cooker instant pot alternative", "spa water clarifier")
+5. Query 3: Use case / customer intent (e.g. "best pressure cooker home cooking", "pool water treatment clarifier")
+6. Each query should be 3-6 words
+7. Queries must be different from each other
 
-Respond with ONLY the search query. No quotes, no explanation.`;
+Respond with ONLY a JSON array of 3 strings. Example:
+["electric pressure cooker 6 quart", "multi cooker slow cooker", "best pressure cooker home"]`;
 
         try {
-            const response = await this.callClaude({
-                max_tokens: 30,
-                temperature: 0,
+            const response = await this.callGemini({
+                max_tokens: 150,
+                temperature: 0.2,
                 messages: [{ role: 'user', content: prompt }]
             });
-            const query = response.content[0].text.trim().replace(/["']/g, '');
-            logger.info(`[VETTING] Claude competitor search query: "${query}"`);
-            return query;
+            const raw = response.content[0].text.trim();
+            const match = raw.match(/\[[\s\S]*\]/);
+            let queries = JSON.parse(match ? match[0] : raw);
+
+            // Clean and validate
+            const brand = (primaryData.brand || '').toLowerCase();
+            queries = queries
+                .map(q => q.replace(/["']/g, '').trim())
+                .filter(q => q.length >= 4)
+                .map(q => brand ? q.replace(new RegExp(brand, 'gi'), '').replace(/\s+/g, ' ').trim() : q)
+                .filter(q => q.length >= 4);
+
+            if (queries.length === 0) return buildFallback();
+
+            logger.info(`[VETTING] Gemini generated ${queries.length} search queries: ${queries.map(q => `"${q}"`).join(', ')}`);
+            return queries;
         } catch (e) {
-            logger.warn(`[VETTING] Search query generation failed, using title fallback.`);
-            return primaryData.title?.split(' ').slice(0, 5).join(' ') || 'amazon product';
+            logger.warn(`[VETTING] Search query generation failed, using fallback queries.`);
+            return buildFallback();
         }
     }
 
     /**
-     * Layer 1: Competitor Filtering
+     * Layer 1: Competitor Selection
+     * Uses Gemini to pick the most suitable direct competitors from search results.
      */
     async selectTopCompetitors(primaryData, searchResults) {
-        if (!this.anthropic) return searchResults.slice(0, 5);
+        // Brand-diverse fallback helper
+        const brandDiverseFallback = (results, primaryBrand) => {
+            const seen = new Set();
+            const out = [];
+            for (const r of results) {
+                const b = (r.brand || '').toLowerCase().trim();
+                if (primaryBrand && b && b === primaryBrand) continue;
+                const key = b || r.asin;
+                if (!seen.has(key)) { seen.add(key); out.push(r); }
+                if (out.length >= 5) break;
+            }
+            return out.length > 0 ? out : results.slice(0, 5);
+        };
+
+        if (!this.gemini) return brandDiverseFallback(searchResults, (primaryData.brand || '').toLowerCase());
+
+        const primaryBrand = (primaryData.brand || '').toLowerCase();
+        const primaryPrice = parseFloat(String(primaryData.price || '0').replace(/[^0-9.]/g, '')) || 0;
 
         const items = searchResults.map(r => ({
             asin: r.asin,
             title: r.name || r.title,
+            brand: r.brand || 'Unknown',
             price: r.price,
             stars: r.stars,
-            reviews: r.total_reviews,
-            boughtPastMonth: r.sales_volume || r.boughtPastMonth || 'N/A'
+            reviews: r.total_reviews
         }));
 
-        const prompt = `You are an Amazon competitive intelligence analyst for Six10 Ventures.
+        const prompt = `You are an Amazon competitive intelligence analyst. Your job is to find the BEST direct competitors for a product.
 
-Target product to find competitors for:
+TARGET PRODUCT:
 - Title: "${primaryData.title}"
-- Brand: ${primaryData.brand || 'N/A'}
+- Brand: "${primaryData.brand || 'N/A'}" — EXCLUDE all products from this brand
 - Price: ${primaryData.price || 'N/A'}
+- Category: ${primaryData.category || 'N/A'}
 
-From the search results below, select the TOP 5 DIRECT COMPETITORS.
-A direct competitor must:
-1. Solve the SAME problem / serve the SAME use case as the target product
-2. Be in the same product format (e.g., liquid, capsule, spray, kit — must match)
-3. Be priced within a similar range (not wildly different)
-4. NOT be accessories, bundles, or completely unrelated products
+DIRECT COMPETITOR CRITERIA (all must apply):
+1. Same core product type — e.g. if target is a "pressure cooker", pick OTHER pressure cookers / multi-cookers
+2. Serves the same customer need / use case
+3. Different brand from "${primaryData.brand || 'N/A'}"
+4. Not an accessory, replacement part, or bundle with unrelated items
+5. Price within 4x range of target price (${primaryPrice > 0 ? `$${(primaryPrice * 0.25).toFixed(0)}–$${(primaryPrice * 4).toFixed(0)}` : 'any'})
 
-Search results:
+IMPORTANT: Be INCLUSIVE. If a product is in the same general category and competes for the same customer, SELECT IT. It's better to pick 5 decent competitors than to return an empty list.
+
+SEARCH RESULTS TO CHOOSE FROM:
 ${JSON.stringify(items, null, 2)}
 
-Respond ONLY with a JSON array of up to 7 ASINs (or fewer if not enough qualify).
-Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
+Return ONLY a JSON array of the best 5 ASINs (fewer if truly not enough qualify). No explanation.
+Example: ["B001XXXXX", "B002XXXXX", "B003XXXXX", "B004XXXXX", "B005XXXXX"]`;
 
         try {
-            const response = await this.callClaude({
+            const response = await this.callGemini({
                 max_tokens: 200,
                 temperature: 0,
                 messages: [{ role: 'user', content: prompt }]
@@ -286,11 +348,18 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
             const raw = response.content[0].text.trim();
             const match = raw.match(/\[[\s\S]*\]/);
             const asins = JSON.parse(match ? match[0] : raw);
-            logger.info(`[VETTING] Claude selected ${asins.length} competitors: ${asins.join(', ')}`);
-            return searchResults.filter(r => asins.includes(r.asin)).slice(0, 5);
+            const selected = searchResults.filter(r => asins.includes(r.asin)).slice(0, 5);
+            logger.info(`[VETTING] Gemini selected ${selected.length} competitors: ${selected.map(r => r.asin).join(', ')}`);
+
+            // If Gemini returned nothing, use brand-diverse fallback
+            if (selected.length === 0) {
+                logger.warn(`[VETTING] Gemini returned 0 competitors — using brand-diverse fallback.`);
+                return brandDiverseFallback(searchResults, primaryBrand);
+            }
+            return selected;
         } catch (e) {
-            logger.warn(`[VETTING] Claude competitor selection fallback used.`);
-            return searchResults.slice(0, 5);
+            logger.warn(`[VETTING] Gemini selection failed — using brand-diverse fallback.`);
+            return brandDiverseFallback(searchResults, primaryBrand);
         }
     }
 
@@ -334,20 +403,19 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
 
     /**
      * Pre-compute deterministic, realistic sales velocity baselines for Six10 product launches.
-
      *
      * SIX10 DEBRIEF — Dynamic Category Scaling:
      *   - Market volume is product-dependent; we use relative capture instead of hard caps.
-     *   - Most Likely (ML): ~10% of Top-3 competitors' price-adjusted volume.
-     *   - Best Case (BC):   ~30% of the #1 Market Leader's price-adjusted volume.
+     *   - Most Likely (ML): ~25% of Top-3 competitors' price-adjusted volume.
+     *   - Best Case (BC):   ~50% of the #1 Market Leader's price-adjusted volume.
      *
      * FORMULA:
      *   1. Badge → raw daily   (e.g. "1K+ bought" → 33/day)
      *   2. BSR multiplier      (Small bump for high-velocity ranking)
      *   3. Price elasticity    (Penalty if price exceeds market, bonus if cheaper)
      *   4. Market Launch Capture:
-     *        ML = Average(Top-3 Competitors) × 0.10 (Conservative Entry)
-     *        BC = Market Leader × 0.30 (Strong PPC/Viral Launch)
+     *        ML = Average(Top-3 Competitors) × 0.25 (Realistic Entry)
+     *        BC = Market Leader × 0.50 (Dominant Premium Launch)
      */
     _computeVelocityBaselines(competitors, targetPrice) {
         const parsed = competitors.map(c => {
@@ -385,7 +453,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
             let elasticity = 1.0;
             if (priceRaw > 0 && targetPrice > 0) {
                 const priceDiff = targetPrice - priceRaw;
-                elasticity = Math.max(0.40, 1 - (priceDiff * 0.04)); // 4% per $1
+                elasticity = Math.max(0.70, 1 - (priceDiff * 0.01)); // 1% per $1 (Softer penalty for Premium branding)
             }
             const competitorAdjustedDaily = Math.max(1, Math.round(bsrAdjusted * elasticity));
 
@@ -397,10 +465,10 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
                 badgeDaily,
                 bsrAdjusted,
                 competitorAdjustedDaily,
-                // SIX10 DEBRIEF ALIGNMENT (ML=10% of Top 3 Avg, BC=30% of Leader)
+                // SIX10 DEBRIEF ALIGNMENT (ML=25% of Top 3 Avg, BC=50% of Leader)
                 // We pre-calculate local variants for the analysis section
-                launchMostLikely: Math.max(1, Math.round(competitorAdjustedDaily * 0.10)), 
-                launchBestCase:   Math.max(1, Math.round(competitorAdjustedDaily * 0.30)),
+                launchMostLikely: Math.max(1, Math.round(competitorAdjustedDaily * 0.25)), 
+                launchBestCase:   Math.max(1, Math.round(competitorAdjustedDaily * 0.50)),
                 size: this._extractSize(d.title, d.size, d.volume)
             };
         }).filter(Boolean);
@@ -455,12 +523,12 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         // Sort by competitorAdjustedDaily descending (strongest to weakest)
         parsed.sort((a, b) => b.competitorAdjustedDaily - a.competitorAdjustedDaily);
 
-        // --- SIX10 FORMULA: ML = 10% of Average(Top 3) | BC = 30% of Leader ---
+        // --- SIX10 FORMULA: ML = 25% of Average(Top 3) | BC = 50% of Leader ---
         const top3 = parsed.slice(0, Math.min(3, parsed.length));
         const top3Avg = top3.reduce((sum, c) => sum + c.competitorAdjustedDaily, 0) / top3.length;
         
-        const mostLikely = Math.max(3, Math.round(top3Avg * 0.10));
-        const bestCase   = Math.max(mostLikely + 5, Math.round(parsed[0].competitorAdjustedDaily * 0.30));
+        const mostLikely = Math.max(3, Math.round(top3Avg * 0.25));
+        const bestCase   = Math.max(mostLikely + 5, Math.round(parsed[0].competitorAdjustedDaily * 0.50));
         
         logger.info(`[VETTING] Dynamic Baseline — Top Comp: ${parsed[0].competitorAdjustedDaily}/day, ML=${mostLikely}/day, BC=${bestCase}/day | Recommended Size: ${recommendedSize}`);
 
@@ -482,7 +550,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
             return parseFloat(String((c.data || c).price || '0').replace(/[^0-9.]/g, '')) || 0;
         }).filter(p => p > 0);
         const avgPrice = prices.length ? prices.reduce((a, b) => a + b, 0) / prices.length : 25;
-        // Preliminary target price estimate (Claude will refine this)
+        // Preliminary target price estimate (Gemini will refine this)
         const estimatedTargetPrice = Math.round(avgPrice * 1.15 * 100) / 100;
 
         // Step 2 — Pre-compute velocity baselines deterministically
@@ -494,14 +562,16 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         You are an expert Amazon product analyst for Six10 Ventures, a moderate-to-premium Amazon brand.
         Analyze the competitor data below for the product idea: "${ideaName}".
 
-        TASK:
-        1. Classify each of the top competitors into a market tier: "Budget/Economy" (Lowest price point), "Mid-Range" (Balanced price/quality), or "Premium/Elite" (Highest specifications/brand value).
-        2. Differentiate based on their Selling Price and Brand Authority. Do NOT default all to Mid-Range.
+        1. Classify each of the top competitors into a market tier: 
+           - "Budget/Functional": Low-priced, high-volume, basic listings, commodity feel.
+           - "Mid-Range": Moderate pricing, decent listing quality, average branding.
+           - "Premium": Higher-priced, polished listings, strong imagery, brand feel.
+        2. Differentiate based on their Selling Price, Volume, and Brand Authority. Do NOT default all to Mid-Range.
         3. Recommend a Target Size based on the winning market volume.
         4. Predict a realistic "Most Likely" and "Best Case" sales velocity for our new launch.
         5. USE THE PRE-COMPUTED DISTRIBUTIONS below. These scale relative to the category depth.
-           - PRE-COMPUTED mostLikelyUnitsPerDay: ${velocity.mostLikely} (Target: ~50% capture of competitor average)
-           - PRE-COMPUTED bestCaseUnitsPerDay: ${velocity.bestCase} (Target: parity with market leaders)
+           - PRE-COMPUTED mostLikelyUnitsPerDay: ${velocity.mostLikely} (Target: ~25% capture of competitor average)
+           - PRE-COMPUTED bestCaseUnitsPerDay: ${velocity.bestCase} (Target: ~50% capture of market leaders)
            - CROSS-CHECK: Evaluate your final estimates against the \`computedBadgeDaily\` and \`boughtPastMonth\` of all competitors.
            - RANGE ALIGNMENT: Your "Most Likely" scenario should NOT be significantly lower than the bottom-tier competitors if the product is viable. It should feel like a realistic entry into the range of volumes you see in the data (not too low, not too large).
         4. DETERMINE Seasonality: "365" (Year-round) or "245" (Seasonal).
@@ -537,8 +607,8 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         }), null, 2)}
 
         CONSTRAINTS:
-        - mostLikelyUnitsPerDay: Aim for ±25% of ${velocity.mostLikely} (range: ${Math.floor(velocity.mostLikely * 0.75)}–${Math.ceil(velocity.mostLikely * 1.25)}). Ensure it is realistic against competitor volumes.
-        - bestCaseUnitsPerDay: Aim for ±25% of ${velocity.bestCase} (range: ${Math.floor(velocity.bestCase * 0.75)}–${Math.ceil(velocity.bestCase * 1.25)}).
+        - mostLikelyUnitsPerDay: Aim for ±25% of ${velocity.mostLikely} (range: ${Math.floor(velocity.mostLikely * 0.75)}–${Math.ceil(velocity.mostLikely * 1.5)}). Ensure it is realistic against competitor volumes.
+        - bestCaseUnitsPerDay: Aim for ±25% of ${velocity.bestCase} (range: ${Math.floor(velocity.bestCase * 0.75)}–${Math.ceil(velocity.bestCase * 1.5)}).
         - If you adjust outside this range (e.g. because you see a specific competitor doing much better and our product matches them), explain clearly in salesReasoning why the data justifies it.
 
         OUTPUT: Respond with ONLY valid raw JSON — no markdown, no explanation, no code blocks.
@@ -559,8 +629,8 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         }
         `;
 
-        const response = await this.callClaude({
-            max_tokens: 2500,
+        const response = await this.callGemini({
+            max_tokens: 8192,
             temperature: 0,
             system: "You are a financial analyst. Output only raw valid JSON with no markdown or code blocks.",
             messages: [{ role: 'user', content: prompt }]
@@ -579,7 +649,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         const clampPct = 0.40;
         const mlMin = Math.floor(velocity.mostLikely * (1 - clampPct));
         const mlMax = Math.ceil(velocity.mostLikely * (1 + clampPct));
-        const bcMin = Math.max(5, Math.floor(velocity.bestCase * (1 - clampPct)));
+        const bcMin = Math.max(10, Math.floor(velocity.bestCase * (1 - clampPct)));
         const bcMax = Math.ceil(velocity.bestCase * (1 + clampPct));
 
         const rawML = parsed.mostLikelyUnitsPerDay || velocity.mostLikely;
@@ -590,7 +660,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         parsed.estimatedUnitsPerDay  = parsed.mostLikelyUnitsPerDay;
 
         if (rawML !== parsed.mostLikelyUnitsPerDay || rawBC !== parsed.bestCaseUnitsPerDay) {
-            logger.warn(`[VETTING] Claude drifted outside bounds. Clamped: ML ${rawML}→${parsed.mostLikelyUnitsPerDay}, BC ${rawBC}→${parsed.bestCaseUnitsPerDay}`);
+            logger.warn(`[VETTING] Gemini drifted outside bounds. Clamped: ML ${rawML}→${parsed.mostLikelyUnitsPerDay}, BC ${rawBC}→${parsed.bestCaseUnitsPerDay}`);
         }
         logger.info(`[VETTING] Final velocity: mostLikely=${parsed.mostLikelyUnitsPerDay}/day, bestCase=${parsed.bestCaseUnitsPerDay}/day (pre-computed baseline: ${velocity.mostLikely}/${velocity.bestCase})`);
 
@@ -685,7 +755,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
 
         const referralRate = 0.15;
         const adSpendPct = 0.20;   // Unified: 20% ad spend as per debrief
-        // Use Claude's return rate if provided, else default 2.5%
+        // Use Gemini's return rate if provided, else default 2.5%
         const retRate = (claudeReturnRate && claudeReturnRate > 0 && claudeReturnRate < 1)
             ? claudeReturnRate : 0.025;
         const avgInvHolding = 0.5; // Default per debrief
@@ -696,7 +766,7 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
 
         const referralFee = price * referralRate;
 
-        const totalFees = fbaFee + supplierToAmazon + storageAndInbound; // Fixed $8.00 total
+        const totalFees = fbaFee + supplierToAmazon + storageAndInbound; // Combined Operational Fees (Dynamic FBA + Fixed Inbound/Storage)
         
         // --- 1. Calculate Target COGS for 30% Gross Margin ---
         // Formula: Margin = (SellingPrice * 0.85 - COGS - TotalFees) / SellingPrice
@@ -723,22 +793,13 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         const scenarios = [];
         const trailingRev = 25000000; // $25M denominator per debrief
 
-        // 1. Sanity Cap for Best Case Velocity
-        // Most niche products should not projected at 2,000+ units/day without extreme evidence.
-        const suggestedML = estimatedUnits || 25;
-        const rawBestCase = bestCaseUnits || Math.max(suggestedML * 2, 41);
+        const mlUnits = estimatedUnits || 25;
+        const bcUnits = bestCaseUnits || Math.max(mlUnits * 2, 41);
         
-        // Cap Best Case at 500 units/day or 5x Most Likely (whichever is higher)
-        const sanityCeiling = Math.max(500, suggestedML * 5);
-        const clampedBestCase = Math.min(rawBestCase, sanityCeiling);
-        
-        let tableCeiling = Math.round(clampedBestCase);
-        if (tableCeiling % 2 === 0) tableCeiling += 1;
-
-        // 2. Fixed Step Size: as per debrief, step should be 2 for a clear sequence (1, 3, 5...)
         const step = 2;
+        const tableCeiling = Math.round(bcUnits);
 
-        // Generate scenario table with a dynamic step size
+        // Pass 1: Generate Scenarios
         for (let units = 1; units <= tableCeiling; units += step) {
             const dailyRev = units * price;
             const annualVolume = units * days; 
@@ -746,41 +807,38 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
             const pctOfRev = (annualRev / trailingRev) * 100;
 
             // Baseball categories based on $25M (debrief spec exact thresholds by %)
-            // < 1%  = Less Than a Single  (<$250,000)
-            // 1-3%  = Single              ($250K - $750K)
-            // 3-6%  = Double              ($750K - $1.5M)
-            // 6-10% = Triple              ($1.5M - $2.5M)
-            // >10%  = Homerun             (>$2.5M)
             let baseballCategory = 'Less Than a Single';
             if (annualRev >= 2500000) baseballCategory = 'Homerun';
             else if (annualRev >= 1500000) baseballCategory = 'Triple';
             else if (annualRev >= 750000) baseballCategory = 'Double';
             else if (annualRev >= 250000) baseballCategory = 'Single';
 
-            const isMostLikely = estimatedUnits && Math.abs(units - estimatedUnits) < 2;
-            const isBestCase = (units === tableCeiling);
-
             scenarios.push({
                 unitsPerDay: units,
                 sellingPrice: price,
                 dailyRevenue: parseFloat(dailyRev.toFixed(2)),
                 daysPerYear: days,
-                annualVolume,
+                totalUnitVolume: annualVolume,
                 expectedAnnualRevenue: parseFloat(annualRev.toFixed(2)),
                 pctOfTrailingRevenue: parseFloat(pctOfRev.toFixed(4)),
                 baseballCategory,
-                isMostLikely,
-                isBestCase
+                isMostLikely: false,
+                isBestCase: false
             });
         }
+        // Pass 2: Identify single closest matches for labels
+        const searchML = estimatedUnits || 25;
+        const searchBC = bestCaseUnits || 50;
 
-        // Ensure at least one most likely scenario is marked
-        if (!scenarios.some(s => s.isMostLikely) && estimatedUnits) {
-            const closest = scenarios.reduce((p, c) =>
-                Math.abs(c.unitsPerDay - estimatedUnits) < Math.abs(p.unitsPerDay - estimatedUnits) ? c : p
-            );
-            closest.isMostLikely = true;
-        }
+        const closestML = scenarios.reduce((p, c) =>
+            Math.abs(c.unitsPerDay - searchML) < Math.abs(p.unitsPerDay - searchML) ? c : p
+        );
+        const closestBC = scenarios.reduce((p, c) =>
+            Math.abs(c.unitsPerDay - searchBC) < Math.abs(p.unitsPerDay - searchBC) ? c : p
+        );
+        
+        if (closestML) closestML.isMostLikely = true;
+        if (closestBC) closestBC.isBestCase = true;
 
         // --- Annual Summary Metrics (Table 2) ---
         const dailyUnits = estimatedUnits || 25;
@@ -829,9 +887,6 @@ Example: ["B001", "B002", "B003", "B004", "B005", "B006", "B007"]`;
         };
     }
 
-    /**
-     * Emergency fallback for when AI fails or is disabled.
-     */
     /**
      * Local Intelligence Calculation (Failsafe Mode)
      * Used when Anthropic servers are overloaded.

@@ -1,28 +1,28 @@
-const Anthropic = require('@anthropic-ai/sdk');
 require('dotenv').config();
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY.trim() });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY.trim());
 
 const models = [
-    'claude-sonnet-4-20250514',
-    'claude-3-5-sonnet-20241022',
-    'claude-3-5-sonnet-20240620'
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro'
 ];
 
 async function scan() {
-    console.log('--- TESTING UPDATED MODELS ---');
-    for (const model of models) {
+    console.log('--- TESTING GEMINI MODELS ---');
+    for (const modelName of models) {
         try {
-            console.log(`Testing ${model}...`);
-            const res = await client.messages.create({
-                model,
-                max_tokens: 10,
-                messages: [{ role: 'user', content: 'hi' }]
+            console.log(`Testing ${modelName}...`);
+            const model = genAI.getGenerativeModel({
+                model: modelName,
+                generationConfig: { maxOutputTokens: 10, temperature: 0 }
             });
-            console.log(`✅ SUCCESS [${model}]`);
+            const result = await model.generateContent('hi');
+            console.log(`✅ SUCCESS [${modelName}]: ${result.response.text().trim()}`);
             break; // Stop at first success
         } catch (e) {
-            console.log(`❌ FAILED [${model}] ${e.status} ${e.message}`);
+            console.log(`❌ FAILED [${modelName}] ${e.status} ${e.message}`);
         }
     }
 }

@@ -341,9 +341,19 @@ class ScraperEngine {
             for (const sel of alSelectors) {
                 $(sel).each((i, el) => {
                     if (results.price !== 'N/A') return false;
-                    const txt = $(el).text().trim();
+                    const txt = $(el).text().trim().toLowerCase();
+                    
+                    // CRITICAL FIX: Skip unit prices (e.g. "$0.40 / Fl Oz" or "$0.40 per count")
+                    if (txt.includes('/') || txt.includes('per ') || txt.includes('(')) {
+                        return; // Continue to next element
+                    }
+
                     const m = txt.match(/([$][\d,]+\.?\d*)/i);
                     if (m && m[0] && m[0] !== '$0') {
+                        // Sanity check: If the price is extremely low (e.g. < $1.00), it's likely a unit price false positive
+                        const val = parseFloat(m[1].replace(/[^0-9.]/g, ''));
+                        if (val < 1.0) return; // Keep looking
+                        
                         results.price = m[0];
                     }
                 });

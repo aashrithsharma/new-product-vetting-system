@@ -1,18 +1,19 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const logger = require('./logger');
 
 class AntigravityEngine {
     constructor() {
-        this.anthropic = null;
-        if (process.env.ANTHROPIC_API_KEY) {
-            this.anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY.trim() });
+        this.gemini = null;
+        if (process.env.GEMINI_API_KEY) {
+            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY.trim());
+            this.gemini = genAI;
         }
     }
 
     async analyzeIdea(ideaName, competitorData, context = {}) {
-        if (!this.anthropic) {
-            logger.error('[ANTIGRAVITY] Missing ANTHROPIC_API_KEY in .env');
-            throw new Error('Anthropic API key required.');
+        if (!this.gemini) {
+            logger.error('[ANTIGRAVITY] Missing GEMINI_API_KEY in .env');
+            throw new Error('Gemini API key required.');
         }
 
         logger.info(`[ANTIGRAVITY] Starting product analysis for: ${ideaName}`);
@@ -28,24 +29,28 @@ class AntigravityEngine {
         };
 
         const ctx = { ...defaults, ...context };
-        const model = 'claude-sonnet-4-20250514';
+        const modelName = 'gemini-2.5-flash';
 
-        const prompt = `You are an expert product analyst for Six10 Ventures.
+        const systemInstructions = "Output raw valid JSON only.";
+        const userPrompt = `You are an expert product analyst for Six10 Ventures.
         Analyze category: "${ideaName}".
         Context: ${JSON.stringify(ctx, null, 2)}
         Competitors: ${JSON.stringify(competitorData.slice(0, 5), null, 2)}
         Return JSON ONLY.`;
 
+        const fullPrompt = `${systemInstructions}\n\n${userPrompt}`;
+
         try {
-            const response = await this.anthropic.messages.create({
-                model,
-                max_tokens: 4000,
-                temperature: 0,
-                system: "Output raw valid JSON only.",
-                messages: [{ role: 'user', content: prompt }]
+            const model = this.gemini.getGenerativeModel({
+                model: modelName,
+                generationConfig: {
+                    maxOutputTokens: 4000,
+                    temperature: 0
+                }
             });
 
-            const rawText = response.content[0].text.trim();
+            const result = await model.generateContent(fullPrompt);
+            const rawText = result.response.text().trim();
             const jsonMatch = rawText.match(/\{[\s\S]*\}/);
             const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
             const analysis = JSON.parse(jsonStr);

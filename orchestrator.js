@@ -219,59 +219,41 @@ class Orchestrator {
                     try {
                         const apiKey = process.env.SCRAPERAPI_KEY;
                         if (apiKey) {
-                            // Generate a targeted search query using Claude
-                            const optimizedQuery = await vettingEngine.generateSearchQuery(primary.data);
-                            this.addLog(runId, 'INFO', `Competitor search query: "${optimizedQuery}"`);
+                            // Generate up to 3 targeted search queries using Gemini
+                            const searchQueries = await vettingEngine.generateSearchQuery(primary.data);
+                            const queryList = Array.isArray(searchQueries) ? searchQueries : [searchQueries];
+                            this.addLog(runId, 'INFO', `Competitor search queries: ${queryList.map(q => `"${q}"`).join(', ')}`);
 
-                            // Search Amazon for competitors with robust retries
+                            // Run all queries in parallel for maximum coverage
                             let searchResults = [];
-                            let searchAttempts = 0;
-                            const maxSearchAttempts = 4; // Increased for extra resilience
-
-                            let activeQuery = optimizedQuery;
-                            while (searchAttempts < maxSearchAttempts && searchResults.length === 0) {
-                                searchAttempts++;
-                                try {
-                                    this.addLog(runId, 'INFO', `Searching for competitors (Attempt ${searchAttempts}/${maxSearchAttempts}) with query: "${activeQuery}"`);
-                                    const searchUrl = `https://api.scraperapi.com/structured/amazon/search?api_key=${apiKey}&query=${encodeURIComponent(activeQuery)}&country=us`;
-                                    
-                                    // ADDED: Standard headers and longer per-request timeout
-                                    const searchRes = await axios.get(searchUrl, { 
-                                        timeout: 90000, 
-                                        headers: { 'Accept': 'application/json' } 
-                                    });
-
-                                    if (searchRes.status === 200 && searchRes.data?.results && searchRes.data.results.length > 0) {
-                                        searchResults = searchRes.data.results;
-                                        break;
-                                    }
-                                } catch (eSearch) {
-                                    this.addLog(runId, 'WARN', `Search attempt ${searchAttempts} failed: ${eSearch.message}`);
-                                    if (searchAttempts < maxSearchAttempts) {
-                                        // MODIFIED: Exponential Backoff (3s, 8s, 15s)
-                                        const backoff = Math.pow(2, searchAttempts) * 3000;
-                                        this.addLog(runId, 'INFO', `Connection reset or timeout. Waiting ${Math.round(backoff/1000)}s for service recovery...`);
-                                        await delay(backoff);
-
-                                        // On failure attempts or if results were empty, pivot to a broader fallback query
-                                        if (searchAttempts >= 1) {
-                                            activeQuery = `${primary.data.category?.split('>').pop() || ''} ${primary.data.title?.split(' ').slice(0, 3).join(' ')}`.trim();
-                                            this.addLog(runId, 'INFO', `Pivoting to safe fallback query: "${activeQuery}"`);
+                            const searchPromises = queryList.map(async (q) => {
+                                for (let attempt = 1; attempt <= 2; attempt++) {
+                                    try {
+                                        this.addLog(runId, 'INFO', `Searching: "${q}" (attempt ${attempt})`);
+                                        const url = `https://api.scraperapi.com/structured/amazon/search?api_key=${apiKey}&query=${encodeURIComponent(q)}&country=us`;
+                                        const res = await axios.get(url, { timeout: 45000, headers: { 'Accept': 'application/json' } });
+                                        if (res.status === 200 && res.data?.results?.length > 0) {
+                                            return res.data.results;
                                         }
+                                    } catch (e) {
+                                        if (attempt < 2) await delay(3000);
                                     }
                                 }
-                            }
+                                return [];
+                            });
 
-                            if (searchResults.length < 5) {
-                                const broaderQuery = `${primary.data.category?.split('>').pop() || ''} ${primary.data.title?.split(' ').slice(0, 3).join(' ')}`.trim();
-                                this.addLog(runId, 'INFO', `Found only ${searchResults.length} results. Trying broader backup search: "${broaderQuery}"`);
+                            const allQueryResults = await Promise.all(searchPromises);
+                            allQueryResults.forEach(results => { searchResults = searchResults.concat(results); });
+
+                            // If still empty, try a broad fallback
+                            if (searchResults.length === 0) {
+                                const fallbackQ = `${primary.data.category?.split('>').pop()?.trim() || ''} ${primary.data.title?.split(' ').slice(0, 3).join(' ')}`.trim();
+                                this.addLog(runId, 'INFO', `All queries returned empty. Trying broad fallback: "${fallbackQ}"`);
                                 try {
-                                    const broaderUrl = `https://api.scraperapi.com/structured/amazon/search?api_key=${apiKey}&query=${encodeURIComponent(broaderQuery)}&country=us`;
-                                    const broaderRes = await axios.get(broaderUrl, { timeout: 45000 });
-                                    if (broaderRes.status === 200 && broaderRes.data?.results) {
-                                        searchResults = [...searchResults, ...broaderRes.data.results];
-                                    }
-                                } catch (e2) { /* ignore broader search failure */ }
+                                    const fbUrl = `https://api.scraperapi.com/structured/amazon/search?api_key=${apiKey}&query=${encodeURIComponent(fallbackQ)}&country=us`;
+                                    const fbRes = await axios.get(fbUrl, { timeout: 45000 });
+                                    if (fbRes.status === 200 && fbRes.data?.results) searchResults = fbRes.data.results;
+                                } catch (e2) { /* ignore */ }
                             }
 
                             // 1. DEDUPLICATION: Ensure we don't have overlapping results between search passes
@@ -312,12 +294,33 @@ class Orchestrator {
                                     candidates = priceFiltered;
                                 }
                             }
+                            // 4. BRAND EXCLUSION FILTER — remove same-brand as primary product
+                            // Check BOTH the brand field AND the product title (ScraperAPI often omits brand field)
+                            const primaryBrand = (primary.data.brand || '').toLowerCase().trim();
+                            if (primaryBrand && primaryBrand !== 'n/a' && primaryBrand.length >= 3) {
+                                const brandFiltered = candidates.filter(r => {
+                                    const candidateBrand = (r.brand || '').toLowerCase().trim();
+                                    const candidateTitle = (r.name || r.title || '').toLowerCase();
+                                    // Check brand field first, then check if title STARTS WITH the brand name
+                                    const brandMatch = candidateBrand && candidateBrand !== 'n/a' && candidateBrand === primaryBrand;
+                                    const titleStartsWithBrand = candidateTitle.startsWith(primaryBrand);
+                                    const isSameBrand = brandMatch || titleStartsWithBrand;
+                                    if (isSameBrand) {
+                                        logger.info(`[ORCHESTRATOR] Filtering out same-brand candidate: "${r.name || r.title}"`);
+                                        return false;
+                                    }
+                                    return true;
+                                });
+                                // Only apply filter if we still have enough candidates
+                                if (brandFiltered.length >= 3) candidates = brandFiltered;
+                                else this.addLog(runId, 'WARN', `Brand filter left only ${brandFiltered.length} candidates — keeping all to avoid empty results.`);
+                            }
 
-                            this.addLog(runId, 'INFO', `${candidates.length} relevant candidates available for selection. Sending to Claude...`);
+                            this.addLog(runId, 'INFO', `${candidates.length} relevant candidates available. Sending top 30 to Gemini for selection...`);
 
                             if (candidates.length > 0) {
-                                // Claude picks the top 5 most direct competitors
-                                const bestComps = await vettingEngine.selectTopCompetitors(primary.data, candidates.slice(0, 20));
+                                // Gemini picks the top 5 most direct competitors
+                                const bestComps = await vettingEngine.selectTopCompetitors(primary.data, candidates.slice(0, 30));
                                 this.addLog(runId, 'INFO', `Claude selected ${bestComps.length} direct competitors.`);
 
                                 this.addLog(runId, 'INFO', `Scraping ${bestComps.length} discovered competitors in parallel...`);

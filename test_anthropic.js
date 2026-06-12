@@ -1,18 +1,18 @@
 require('dotenv').config();
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 async function test() {
     try {
-        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-        const res = await anthropic.messages.create({
-            model: 'claude-3-haiku-20240307',
-            max_tokens: 10,
-            messages: [{ role: 'user', content: 'Say hi' }]
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({
+            model: 'gemini-2.0-flash',
+            generationConfig: { maxOutputTokens: 10, temperature: 0 }
         });
-        console.log("Success:", res.content[0].text);
+        const result = await model.generateContent('Say hi');
+        console.log("Success:", result.response.text());
     } catch (e) {
         console.log("Status:", e.status);
-        console.log("Error Type:", e.type);
+        console.log("Error Type:", e.errorDetails);
         console.log("Error Msg:", e.message);
     }
 }
